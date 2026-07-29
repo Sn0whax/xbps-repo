@@ -46,9 +46,6 @@ jobs:
       - name: Clone and checkout
         run: git clone --depth=1 --branch=master https://github.com/void-linux/void-packages
 
-      - name: Switch to Noid base files
-        run: find void-packages -type f -exec sed -i "s/base-files/noid-base-files/g" {} +
-
       - name: Checkout custom packages
         run: git clone --depth=1 --branch=main https://github.com/${{ github.repository }} noid-packages
 
@@ -59,21 +56,36 @@ jobs:
           cat noid-packages/common/shlibs | tee -a \
             void-packages/common/shlibs
           cp -r noid-packages/srcpkgs/* void-packages/srcpkgs/
-          cp noid-packages/common/repo-keys/fd\:a3\:7d\:ab\:fe\:ed\:b4\:4e\:20\:48\:3e\:ab\:0b\:02\:7d\:45.plist void-packages/common/repo-keys
 
       - name: Prepare masterdir
         run: |
           cd void-packages
-          sed -i '1i repository=https://github.com/noid-linux/xbps-repo/releases/latest/download' \
+          sed -i '1i repository=https://github.com/${{ github.repository }}/releases/latest/download' \
             etc/xbps.d/repos-remote.conf
           chown -R builder:builder . &&
           sudo -Eu builder common/travis/set_mirror.sh &&
           sudo -Eu builder common/travis/prepare.sh &&
           common/travis/fetch-xtools.sh
 
-      - name: Find changed templates
+      - name: Find packages to build
+        shell: bash
         run: |
-          cd noid-packages && sudo -Eu builder ./common/travis/changed_templates.sh
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            printf '%s\n' \
+              brave-origin \
+              discord \
+              helium-browser \
+              heroic-games-launcher \
+              intel-media-driver-nonfree \
+              spotify \
+              tutanota-desktop > /tmp/templates
+          else
+            cd noid-packages
+            sudo -Eu builder ./common/travis/changed_templates.sh
+          fi
+
+          echo "Packages selected for build:"
+          cat /tmp/templates
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -92,11 +104,13 @@ jobs:
 
           cp ~/hostdir/binpkgs/*.xbps ~/packages/
 
-      - name: Download the rest of the packages
+      - name: Download existing repository packages
+        shell: bash
         run: |
+          mkdir -p ~/all_packages
           gh release download latest \
             --repo "$GITHUB_REPOSITORY" \
-            --dir ~/all_packages
+            --dir ~/all_packages || echo "No existing latest release; creating the repository from this build"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -108,7 +122,11 @@ jobs:
             rm -f ~/all_packages/"$pkg"*.xbps
           done
           cp -r ~/packages ~/new_packages
-          cp ~/all_packages/*.xbps ~/packages/
+          shopt -s nullglob
+          existing=(~/all_packages/*.xbps)
+          if (( ${#existing[@]} )); then
+            cp "${existing[@]}" ~/packages/
+          fi
 
       - name: Sign and package
         env:
