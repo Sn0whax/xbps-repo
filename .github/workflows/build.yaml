@@ -102,7 +102,7 @@ jobs:
             sudo -Eu builder ./xbps-src -j$(nproc) -s -H ~/hostdir pkg "$pkg"
           done
 
-            find ~/hostdir/binpkgs -type f -regex ".+[.]xbps" -exec cp -t ~/packages {} +
+            if [ -d ~/hostdir/binpkgs ]; then find ~/hostdir/binpkgs -type f -regex ".+[.]xbps" -exec cp -t ~/packages {} +; else echo "No packages were built; skipping collection."; fi
 
       - name: Download existing repository packages
         shell: bash
