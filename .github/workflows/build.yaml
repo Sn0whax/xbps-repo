@@ -1,6 +1,7 @@
 name: Build Packages
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - "main"
@@ -94,7 +95,7 @@ jobs:
       - name: Download the rest of the packages
         run: |
           gh release download latest \
-            --repo noid-linux/xbps-repo \
+            --repo "$GITHUB_REPOSITORY" \
             --dir ~/all_packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -145,11 +146,11 @@ jobs:
         shell: bash
         run: |
           for pkg in $(ls -1 ~/new_packages/*.xbps | sed 's/-[^-]*$//' | xargs -I {} basename {}); do
-            gh release view latest --repo noid-linux/xbps-repo --json assets --jq '.assets[].name' \
-            | grep "^${pkg}-" | xargs -I {} gh release delete-asset latest {} --repo noid-linux/xbps-repo --yes || true
+            gh release view latest --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+            | grep "^${pkg}-" | xargs -I {} gh release delete-asset latest {} --repo "$GITHUB_REPOSITORY" --yes || true
           done
 
-          gh release delete-asset latest "x86_64-repodata" --repo noid-linux/xbps-repo --yes || true
+          gh release delete-asset latest "x86_64-repodata" --repo "$GITHUB_REPOSITORY" --yes || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
