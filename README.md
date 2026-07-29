@@ -1,31 +1,101 @@
-# Custom XBPS Repository
+# Sn0whax XBPS Repository
 
-[![Build Packages](https://github.com/noid-linux/xbps-repo/actions/workflows/build.yaml/badge.svg)](https://github.com/noid-linux/xbps-repo/actions/workflows/build.yaml)
+Unofficial third-party XBPS repository for a small selection of packages on Void Linux glibc.
 
-This repository contains custom XBPS packages.
+> [!WARNING]
+> This repository is independently maintained and is not reviewed, endorsed, signed, or distributed by the Void Linux project. Review package templates and workflow runs before installing packages.
 
-> [!NOTE]
-> Some packages in this repository are repackaged from official upstream binaries (e.g., Brave, LibreWolf, VSCodium) while others are built from source (e.g., Ferdium). Check individual package templates in `srcpkgs/` for build details.
+## Available packages
 
-## Installation Instructions
+- `brave-origin`
+- `discord`
+- `helium-browser`
+- `heroic-games-launcher`
+- `intel-media-driver-nonfree`
+- `spotify`
+- `tutanota-desktop`
 
-The easiest way is by adding our repository, which includes pre-built binaries. You can do so by creating a new file and specifying the repository URL.
+## Requirements
 
-```bash
-echo "repository=https://github.com/noid-linux/xbps-repo/releases/latest/download" | sudo tee /etc/xbps.d/noid-xbps-repo.conf
+This repository targets Void Linux glibc on `x86_64`.
+
+Confirm that the system uses glibc:
+
+```console
+ldd --version
 ```
 
-Once you've created file above, proceed with installing any packages you want using xbps
+## Add the repository
+
+Create an XBPS repository configuration file:
+
+```bash
+echo 'repository=https://github.com/Sn0whax/xbps-repo/releases/latest/download' | sudo tee /etc/xbps.d/sn0whax-xbps-repo.conf
+```
+
+Refresh repository metadata:
+
+```bash
+sudo xbps-install -S
+```
+
+On first use, XBPS may ask whether to import and trust this repository's signing key. Verify the displayed fingerprint before accepting it.
+
+## Install packages
+
+Install one package:
+
+```bash
+sudo xbps-install brave-origin
+```
+
+Install all packages provided by this repository:
+
+```bash
+sudo xbps-install brave-origin discord helium-browser heroic-games-launcher intel-media-driver-nonfree spotify tutanota-desktop
+```
+
+## Update
+
+Packages from this repository update through XBPS with the rest of the system:
 
 ```bash
 sudo xbps-install -Su
-sudo xbps-install brave librewolf vscodium obsidian intel-media-driver-nonfree
 ```
 
-## Available Packages
+## Remove the repository
 
-See [PACKAGES.md](/PACKAGES.md) for the full list of available packages.
+Remove the repository configuration:
+
+```bash
+sudo rm /etc/xbps.d/sn0whax-xbps-repo.conf
+```
+
+Removing the repository configuration does not uninstall packages that were already installed from it.
+
+## Build and release automation
+
+The workflow in `.github/workflows/build.yaml` builds changed package templates, signs the resulting XBPS repository, and publishes release assets to the `latest` GitHub release.
+
+The workflow supports pushes to `main` and manual runs through GitHub Actions. A successful build workflow does not by itself discover new upstream versions; package templates must still be updated by a maintainer or by separate package-specific update automation.
+
+Required repository secrets:
+
+- `PRIVATE_PEM` - encrypted private key used to sign repository metadata and packages
+- `PRIVATE_PEM_PASSPHRASE` - passphrase for the signing key
+
+GitHub provides `GITHUB_TOKEN` automatically. The workflow requires `contents: write` permission to update release assets.
+
+## Security
+
+Packages may repackage upstream binaries rather than compile applications from source. Inspect each template in `srcpkgs/` for its source URL, checksum, dependencies, and installation steps.
+
+Do not commit signing keys, passphrases, access tokens, or other secrets to this repository.
+
+## Credits
+
+Forked from and based on the packaging and automation work in [`noid-linux/xbps-repo`](https://github.com/noid-linux/xbps-repo).
 
 ## License
 
-This project is released under the MIT License. For more details, see the LICENSE file.
+See [`LICENSE`](LICENSE). Individual applications remain subject to their respective upstream licenses and trademark terms.
