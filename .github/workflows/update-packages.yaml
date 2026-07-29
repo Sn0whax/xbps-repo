@@ -1,0 +1,132 @@
+name: Update Package Templates
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: update-package-templates
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update all templates
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          update_template() {
+            local template="$1" version="$2" checksum="$3"
+            sed -i \
+              -e "s/^version=.*/version=${version}/" \
+              -e 's/^revision=.*/revision=1/' \
+              -e "s/^checksum=.*/checksum=${checksum}/" \
+              "$template"
+          }
+
+          download_sum() {
+            local url="$1" file="$2"
+            curl --retry 4 --retry-all-errors -fL "$url" -o "$file"
+            sha256sum "$file" | awk '{print $1}'
+          }
+
+          # Brave Origin: newest non-prerelease release containing the exact Origin ZIP.
+          brave_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/brave/brave-browser/releases?per_page=100')"
+          brave_row="$(jq -r '[.[] | select(.draft == false and .prerelease == false) | .tag_name as $tag | ($tag | sub("^v"; "")) as $v | .assets[] | select(.name == ("brave-origin-" + $v + "-linux-amd64.zip")) | [$v, .browser_download_url]] | first | @tsv' <<<"$brave_json")"
+          IFS=$'\t' read -r brave_version brave_url <<<"$brave_row"
+          [[ -n "$brave_version" && -n "$brave_url" ]]
+          brave_sum="$(download_sum "$brave_url" "$tmp/brave.zip")"
+          update_template srcpkgs/brave-origin/template "$brave_version" "$brave_sum"
+
+          # Discord stable Linux release.
+          discord_version="$(curl -fsSL 'https://discordapp.com/api/updates/stable?platform=linux' | jq -er '.name')"
+          discord_url="https://dl.discordapp.net/apps/linux/${discord_version}/discord-${discord_version}.tar.gz"
+          discord_sum="$(download_sum "$discord_url" "$tmp/discord.tar.gz")"
+          update_template srcpkgs/discord/template "$discord_version" "$discord_sum"
+
+          # Helium Linux: latest release with the expected x86_64 archive.
+          helium_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/imputnet/helium-linux/releases?per_page=20')"
+          helium_row="$(jq -r '[.[] | select(.draft == false and .prerelease == false) | (.tag_name | sub("^v"; "")) as $v | .assets[] | select(.name == ("helium-" + $v + "-x86_64_linux.tar.xz")) | [$v, .browser_download_url]] | first | @tsv' <<<"$helium_json")"
+          IFS=$'\t' read -r helium_version helium_url <<<"$helium_row"
+          [[ -n "$helium_version" && -n "$helium_url" ]]
+          helium_sum="$(download_sum "$helium_url" "$tmp/helium.tar.xz")"
+          update_template srcpkgs/helium-browser/template "$helium_version" "$helium_sum"
+
+          # Heroic stable tag archive.
+          heroic_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/Heroic-Games-Launcher/HeroicGamesLauncher/releases/latest')"
+          heroic_version="$(jq -er '.tag_name | sub("^v"; "")' <<<"$heroic_json")"
+          heroic_url="https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/archive/refs/tags/v${heroic_version}.tar.gz"
+          heroic_sum="$(download_sum "$heroic_url" "$tmp/heroic.tar.gz")"
+          update_template srcpkgs/heroic-games-launcher/template "$heroic_version" "$heroic_sum"
+
+          # Spotify stable amd64 package index; split full version into version and _subver.
+          spotify_stanza="$(curl -fsSL 'https://repository.spotify.com/dists/stable/non-free/binary-amd64/Packages.gz' | gzip -dc | awk 'BEGIN{RS=""} $0 ~ /^Package: spotify-client$ {print; exit}')"
+          spotify_full="$(awk '/^Version: /{sub(/^Version: /, ""); sub(/^1:/, ""); print; exit}' <<<"$spotify_stanza")"
+          spotify_file="$(awk '/^Filename: /{sub(/^Filename: /, ""); print; exit}' <<<"$spotify_stanza")"
+          spotify_sum="$(awk '/^SHA256: /{print $2; exit}' <<<"$spotify_stanza")"
+          spotify_version="$(cut -d. -f1-3 <<<"$spotify_full")"
+          spotify_subver="${spotify_full#${spotify_version}.}"
+          [[ -n "$spotify_version" && -n "$spotify_subver" && "$spotify_sum" =~ ^[0-9a-f]{64}$ ]]
+          curl --retry 4 --retry-all-errors -fL "https://repository.spotify.com/${spotify_file}" -o "$tmp/spotify.deb"
+          [[ "$(sha256sum "$tmp/spotify.deb" | awk '{print $1}')" == "$spotify_sum" ]]
+          sed -i \
+            -e "s/^version=.*/version=${spotify_version}/" \
+            -e 's/^revision=.*/revision=1/' \
+            -e "s/^_subver=.*/_subver=${spotify_subver}/" \
+            -e "s/^checksum=.*/checksum=${spotify_sum}/" \
+            srcpkgs/spotify/template
+
+          # Tutanota: newest desktop release containing the unpacked Linux archive.
+          tuta_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/tutao/tutanota/releases?per_page=100')"
+          tuta_row="$(jq -r '[.[] | select(.draft == false and (.tag_name | startswith("tutanota-desktop-release-"))) | (.tag_name | sub("^tutanota-desktop-release-"; "")) as $v | .assets[] | select(.name == ("tutanota-desktop-" + $v + "-unpacked-linux.tar.gz")) | [$v, .browser_download_url]] | first | @tsv' <<<"$tuta_json")"
+          IFS=$'\t' read -r tuta_version tuta_url <<<"$tuta_row"
+          [[ -n "$tuta_version" && -n "$tuta_url" ]]
+          tuta_sum="$(download_sum "$tuta_url" "$tmp/tutanota.tar.gz")"
+          update_template srcpkgs/tutanota-desktop/template "$tuta_version" "$tuta_sum"
+
+          git diff --check
+          for p in brave-origin discord helium-browser heroic-games-launcher spotify tutanota-desktop; do
+            t="srcpkgs/$p/template"
+            grep -Eq '^version=.+$' "$t"
+            grep -Eq '^checksum=[0-9a-f]{64}$' "$t"
+          done
+          git diff -- srcpkgs/brave-origin srcpkgs/discord srcpkgs/helium-browser srcpkgs/heroic-games-launcher srcpkgs/spotify srcpkgs/tutanota-desktop
+
+      - name: Commit updates
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- srcpkgs; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'All templates are current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add srcpkgs/brave-origin srcpkgs/discord srcpkgs/helium-browser srcpkgs/heroic-games-launcher srcpkgs/spotify srcpkgs/tutanota-desktop
+          git commit -m 'Update package templates'
+          git push origin HEAD:main
+          echo 'changed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Start package build
+        if: steps.commit.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yaml --repo "$GITHUB_REPOSITORY" --ref main
