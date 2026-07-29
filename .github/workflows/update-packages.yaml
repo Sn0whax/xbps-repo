@@ -75,14 +75,15 @@ jobs:
           update_template srcpkgs/heroic-games-launcher/template "$heroic_version" "$heroic_sum"
 
           # Spotify stable amd64 package index; split full version into version and _subver.
-          spotify_stanza="$(curl -fsSL 'https://repository.spotify.com/dists/stable/non-free/binary-amd64/Packages.gz' | gzip -dc | sed -n '/^Package: spotify-client$/,/^$/p')"
+          spotify_base="https://repository.spotify.com"
+          spotify_stanza="$(curl -fsSL "${spotify_base}/dists/stable/non-free/binary-amd64/Packages.gz" | gzip -dc | sed -n '/^Package: spotify-client$/,/^$/p')"
           spotify_full="$(awk '/^Version: /{sub(/^Version: /, ""); sub(/^1:/, ""); print; exit}' <<<"$spotify_stanza")"
           spotify_file="$(awk '/^Filename: /{sub(/^Filename: /, ""); print; exit}' <<<"$spotify_stanza")"
           spotify_sum="$(awk '/^SHA256: /{print $2; exit}' <<<"$spotify_stanza")"
           spotify_version="$(cut -d. -f1-3 <<<"$spotify_full")"
           spotify_subver="${spotify_full#${spotify_version}.}"
-          [[ -n "$spotify_version" && -n "$spotify_subver" && "$spotify_sum" =~ ^[0-9a-f]{64}$ ]]
-          curl --retry 4 --retry-all-errors -fL "https://repository.spotify.com/${spotify_file}" -o "$tmp/spotify.deb"
+          [[ -n "$spotify_version" && -n "$spotify_subver" && -n "$spotify_file" && "$spotify_sum" =~ ^[0-9a-f]{64}$ ]]
+          curl --retry 4 --retry-all-errors -fL "${spotify_base}/${spotify_file}" -o "$tmp/spotify.deb"
           [[ "$(sha256sum "$tmp/spotify.deb" | awk '{print $1}')" == "$spotify_sum" ]]
           sed -i \
             -e "s/^version=.*/version=${spotify_version}/" \
@@ -92,7 +93,8 @@ jobs:
             srcpkgs/spotify/template
 
           # Tutanota: newest desktop release containing the unpacked Linux archive.
-          tuta_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/tutao/tutanota/releases?per_page=100')"
+          tuta_api="https://api.github.com/repos/tutao/tutanota/releases?per_page=100"
+          tuta_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$tuta_api")"
           tuta_row="$(jq -r '[.[] | select(.draft == false and (.tag_name | startswith("tutanota-desktop-release-"))) | (.tag_name | sub("^tutanota-desktop-release-"; "")) as $v | .assets[] | select(.name == ("tutanota-desktop-" + $v + "-unpacked-linux.tar.gz")) | [$v, .browser_download_url]] | first | @tsv' <<<"$tuta_json")"
           IFS=$'\t' read -r tuta_version tuta_url <<<"$tuta_row"
           [[ -n "$tuta_version" && -n "$tuta_url" ]]
