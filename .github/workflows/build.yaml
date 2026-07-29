@@ -7,7 +7,6 @@ on:
       - "main"
     paths:
       - "srcpkgs/**"
-      - ".github/workflows/build.yaml"
 
 permissions:
   contents: write
