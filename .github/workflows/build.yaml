@@ -89,8 +89,7 @@ jobs:
           while IFS= read -r pkg; do
             [[ -z "$pkg" ]] && continue
             if [[ -f "$GITHUB_WORKSPACE/void-packages/srcpkgs/$pkg/template" ]]; then
-              printf "%s
-" "$pkg" >> /tmp/templates.filtered
+              printf '%s\n' "$pkg" >> /tmp/templates.filtered
             else
               echo "Skipping removed or missing package: $pkg"
             fi
