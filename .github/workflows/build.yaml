@@ -76,7 +76,6 @@ jobs:
               discord \
               helium-browser \
               heroic-games-launcher \
-              intel-media-driver-nonfree \
               spotify \
               tutanota-desktop > /tmp/templates
           else

@@ -11,7 +11,6 @@ Unofficial third-party XBPS repository for a small selection of packages on Void
 - `discord`
 - `helium-browser`
 - `heroic-games-launcher`
-- `intel-media-driver-nonfree`
 - `spotify`
 - `tutanota-desktop`
 
@@ -52,7 +51,6 @@ sudo xbps-install brave-origin
 Install all packages provided by this repository:
 
 ```bash
-sudo xbps-install brave-origin discord helium-browser heroic-games-launcher intel-media-driver-nonfree spotify tutanota-desktop
 ```
 
 ## Update
