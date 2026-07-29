@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=OpenCode
-Exec=opencode-desktop %U
-Terminal=false
-Type=Application
-Icon=opencode-desktop
-StartupWMClass=OpenCode
-MimeType=x-scheme-handler/opencode;
-Categories=Development;

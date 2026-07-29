@@ -1,3 +1,0 @@
-distrobox requires one of the following container engines:
-	docker: Docker support
-	podman: Podman support

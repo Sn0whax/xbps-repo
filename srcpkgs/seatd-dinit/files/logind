@@ -1,3 +1,0 @@
-type = internal
-depends-on: seatd
-before: login.target
