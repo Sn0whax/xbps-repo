@@ -75,8 +75,7 @@ jobs:
           update_template srcpkgs/heroic-games-launcher/template "$heroic_version" "$heroic_sum"
 
           # Spotify stable amd64 package index; split full version into version and _subver.
-          spotify_stanza="$(curl -fsSL 'https://repository.spotify.com/dists/stable/non-free/binary-amd64/Packages.gz' | gzip -dc | awk 'BEGIN{RS=""; FS="
-"} $1 == "Package: spotify-client" {print; exit}')"
+          spotify_stanza="$(curl -fsSL 'https://repository.spotify.com/dists/stable/non-free/binary-amd64/Packages.gz' | gzip -dc | sed -n '/^Package: spotify-client$/,/^$/p')"
           spotify_full="$(awk '/^Version: /{sub(/^Version: /, ""); sub(/^1:/, ""); print; exit}' <<<"$spotify_stanza")"
           spotify_file="$(awk '/^Filename: /{sub(/^Filename: /, ""); print; exit}' <<<"$spotify_stanza")"
           spotify_sum="$(awk '/^SHA256: /{print $2; exit}' <<<"$spotify_stanza")"
