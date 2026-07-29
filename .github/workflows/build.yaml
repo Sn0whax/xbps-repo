@@ -83,8 +83,25 @@ jobs:
             sudo -Eu builder ./common/travis/changed_templates.sh
           fi
 
+          # Deleted packages may be reported as changed; keep only existing templates.
+          : > /tmp/templates.filtered
+          while IFS= read -r pkg; do
+            [[ -z "$pkg" ]] && continue
+            if [[ -f "$GITHUB_WORKSPACE/void-packages/srcpkgs/$pkg/template" ]]; then
+              printf "%s
+" "$pkg" >> /tmp/templates.filtered
+            else
+              echo "Skipping removed or missing package: $pkg"
+            fi
+          done < /tmp/templates
+          mv /tmp/templates.filtered /tmp/templates
+
           echo "Packages selected for build:"
-          cat /tmp/templates
+          if [[ -s /tmp/templates ]]; then
+            cat /tmp/templates
+          else
+            echo "No existing package templates selected."
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
