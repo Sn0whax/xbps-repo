@@ -55,8 +55,7 @@ jobs:
             void-packages/common/travis/changed_templates.sh
           cat noid-packages/common/shlibs | tee -a \
             void-packages/common/shlibs
-          for source in noid-packages/srcpkgs/*; do package=$(basename "$source") rm -rf "void-packages/srcpkgs/$package" cp -a "$source" "void-packages/srcpkgs/$package" done
-
+          for source in noid-packages/srcpkgs/*; do package=$(basename "$source"); rm -rf "void-packages/srcpkgs/$package"; cp -a "$source" "void-packages/srcpkgs/$package"; done
       - name: Prepare masterdir
         run: |
           cd void-packages
@@ -192,7 +191,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download built packages
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: built-packages
           path: ~/release/
