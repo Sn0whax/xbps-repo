@@ -7,7 +7,7 @@ maintainer="Sn0whax <Sn0whax@users.noreply.github.com>"
 license="GPL-3.0-or-later"
 homepage="https://github.com/CachyOS/CachyOS-Settings"
 # Runtime pieces this tuning drives. hdparm is used by the HDD udev rule.
-depends="zramen ananicy-cpp hdparm"
+depends="zramen hdparm"
 
 # Config-only package: no distfiles, no build. Everything comes from files/.
 do_install() {
