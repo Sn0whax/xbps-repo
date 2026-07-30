@@ -1,9 +1,0 @@
-# cachyos-nvidia.conf — ported from CachyOS-Settings usr/lib/modprobe.d/nvidia.conf
-# Only relevant if you run the NVIDIA proprietary/open modules. Harmless otherwise.
-
-# Preserve video memory across suspend (fixes black-screen-on-resume).
-options nvidia NVreg_PreserveVideoMemoryAllocations=1
-# Enable the page-attribute/RTD3 runtime power management path.
-options nvidia NVreg_DynamicPowerManagement=0x02
-# Register the framebuffer console (Wayland-friendly, avoids simpledrm conflicts).
-options nvidia_drm modeset=1 fbdev=1
