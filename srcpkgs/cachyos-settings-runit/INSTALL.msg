@@ -1,18 +1,54 @@
-cachyos-settings-runit installed.
+========================================================================
+ cachyos-settings-runit  —  installed
+========================================================================
 
-sysctl / udev / modprobe / limits are applied automatically on next boot
-(or: sudo xbps-reconfigure -f cachyos-settings-runit ; sudo udevadm control --reload).
+CachyOS-style performance tuning (sysctl / udev / THP / limits / zram),
+ported to runit. Everything below works on its own; ananicy-cpp is
+OPTIONAL and installed separately (see the last section).
 
-Enable the runit services:
-  ln -s /etc/sv/cachyos-boot-tune /var/service/     # THP tuning at boot
-  ln -s /etc/sv/zramen            /var/service/     # compressed swap
-  ln -s /etc/sv/ananicy-cpp       /var/service/     # per-app nice/io tuning
+------------------------------------------------------------------------
+ 1. Apply the tuning
+------------------------------------------------------------------------
+sysctl, udev, modprobe and limits.d files take effect on next boot.
+To apply now without rebooting:
 
-Pull the CachyOS ananicy rule set (needs git):
-  sudo cachyos-fetch-ananicy-rules
-  sudo sv restart ananicy-cpp
+  sudo xbps-reconfigure -f cachyos-settings-runit
+  sudo sysctl --system
+  sudo udevadm control --reload && sudo udevadm trigger
 
-Verify:
+------------------------------------------------------------------------
+ 2. Enable the runit services you want
+------------------------------------------------------------------------
+THP boot tuning (shipped by THIS package):
+  sudo ln -s /etc/sv/cachyos-boot-tune /var/service/
+
+Compressed zram swap (needs the 'zramen' package, a hard dep):
+  sudo ln -s /etc/sv/zramen /var/service/
+
+------------------------------------------------------------------------
+ 3. Verify
+------------------------------------------------------------------------
   sysctl vm.swappiness vm.max_map_count net.ipv4.tcp_keepalive_time
   cat /sys/kernel/mm/transparent_hugepage/enabled
-  cat /sys/block/nvme0n1/queue/scheduler
+  cat /sys/block/nvme0n1/queue/scheduler      # adjust device name
+  ulimit -r                                    # rtprio for audio group
+  zramctl
+
+------------------------------------------------------------------------
+ 4. (OPTIONAL) ananicy-cpp — per-app nice/io auto-tuning
+------------------------------------------------------------------------
+NOT required and NOT a dependency. The tuning above is fully functional
+without it. ananicy-cpp is not in Void's official repos, so build it
+from a community template first, then wire it up:
+
+  # a) build ananicy-cpp (from a Void box with void-packages):
+  #    see github.com/prostitutionofthesoul/ananicy-cpp-void-template
+
+  # b) fetch the CachyOS rule set into /etc/ananicy.d/ :
+  sudo cachyos-fetch-ananicy-rules
+
+  # c) enable the daemon (service action is 'start', not 'run'):
+  sudo ln -s /etc/sv/ananicy-cpp /var/service/
+  sudo sv restart ananicy-cpp
+
+========================================================================
