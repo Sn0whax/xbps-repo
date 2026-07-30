@@ -73,9 +73,13 @@ Removing the repository configuration does not uninstall packages that were alre
 
 ## Build and release automation
 
-The workflow in `.github/workflows/build.yaml` builds changed package templates, signs the resulting XBPS repository, and publishes release assets to the `latest` GitHub release.
+Two workflows work together:
 
-The workflow supports pushes to `main` and manual runs through GitHub Actions. A successful build workflow does not by itself discover new upstream versions; package templates must still be updated by a maintainer or by separate package-specific update automation.
+- **`.github/workflows/update-packages.yaml`** discovers new upstream versions. It runs automatically every 6 hours (`cron: "17 */6 * * *"`, UTC) and on manual dispatch. When it finds a newer version it rewrites the affected template's `version`/`checksum`, commits the change, and triggers the build workflow. If nothing is newer, it exits without building.
+
+- **`.github/workflows/build.yaml`** builds the current package templates, signs the resulting XBPS repository, and publishes release assets to the `latest` GitHub release. It runs on pushes to `main` touching `srcpkgs/**` and on manual dispatch. It does **not** discover new upstream versions on its own; it only builds whatever the templates currently specify.
+
+In normal operation, packages track upstream within roughly six hours: the update workflow detects a new version, commits it, and dispatches a build that republishes the `latest` release.
 
 Required repository secrets:
 
