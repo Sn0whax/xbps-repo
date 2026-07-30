@@ -48,11 +48,6 @@ Install one package:
 sudo xbps-install brave-origin
 ```
 
-Install all packages provided by this repository:
-
-```bash
-```
-
 ## Update
 
 Packages from this repository update through XBPS with the rest of the system:
