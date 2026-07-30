@@ -1,0 +1,16 @@
+#!/bin/sh
+# cachyos-boot-tune — one-shot runit service that applies THP tuning at boot.
+# Unique service name: does NOT conflict with zramen / ananicy-cpp services.
+exec 2>&1
+
+thp=/sys/kernel/mm/transparent_hugepage
+
+# Transparent Hugepages: always (CachyOS default; good for games/Proton/tcmalloc).
+[ -w "$thp/enabled" ] && echo always        > "$thp/enabled"
+# Defrag: defer+madvise = background compaction without stalling allocations.
+[ -w "$thp/defrag" ]  && echo defer+madvise > "$thp/defrag"
+# Let khugepaged collapse pages more readily.
+[ -w "$thp/khugepaged/max_ptes_none" ] && echo 409 > "$thp/khugepaged/max_ptes_none"
+
+# Stay "up" so runsv doesn't respawn-loop this one-shot.
+exec sleep infinity
