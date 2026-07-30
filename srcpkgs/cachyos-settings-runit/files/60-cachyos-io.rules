@@ -1,0 +1,12 @@
+# 60-cachyos-io.rules — I/O scheduler assignment (ported from CachyOS-Settings)
+# bfq for rotational HDDs, mq-deadline for SATA SSD/eMMC, kyber for NVMe.
+# Works on any udev-based system (Void + Artix).
+
+# HDD (rotational) -> bfq  (best fairness/latency for spinning rust)
+ACTION=="add|change", KERNEL=="sd[a-z]|mmcblk[0-9]*", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"
+
+# SATA/eMMC SSD (non-rotational, not NVMe) -> mq-deadline
+ACTION=="add|change", KERNEL=="sd[a-z]|mmcblk[0-9]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+
+# NVMe SSD -> kyber  (low-overhead, scales on fast flash)
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="kyber"
