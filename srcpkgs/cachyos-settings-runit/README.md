@@ -54,7 +54,7 @@ It delivers the "feels-like-CachyOS" tuning layer — sysctl, udev, THP, PAM lim
 |---|---|
 | Rotational HDD (`sd*`, `mmcblk*`) | `bfq` |
 | SATA/eMMC SSD (non-rotational) | `mq-deadline` |
-| NVMe SSD (`nvme*n*`) | `kyber` |
+| NVMe SSD (`nvme*n*`) | 'adios' else `kyber` |
 
 ### Misc device tuning — `61-cachyos-misc.rules`
 
