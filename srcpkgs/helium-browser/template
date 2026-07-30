@@ -1,6 +1,7 @@
 # Template file for 'helium-browser'
 pkgname=helium-browser
 version=0.14.9.1
+revision=2
 
 archs="x86_64"
 depends="vulkan-loader"
