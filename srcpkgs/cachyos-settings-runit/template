@@ -1,0 +1,33 @@
+# Template file for 'cachyos-settings-runit'
+pkgname=cachyos-settings-runit
+version=1.0.0
+revision=1
+short_desc="CachyOS-Settings performance tuning ported to runit (sysctl/udev/THP/limits)"
+maintainer="Sn0whax <Sn0whax@users.noreply.github.com>"
+license="GPL-3.0-or-later"
+homepage="https://github.com/CachyOS/CachyOS-Settings"
+# Runtime pieces this tuning drives. hdparm is used by the HDD udev rule.
+depends="zramen ananicy-cpp hdparm"
+
+# Config-only package: no distfiles, no build. Everything comes from files/.
+do_install() {
+	# ── sysctl (package-owned dir) ──────────────────────────
+	vinstall "${FILESDIR}/70-cachyos-settings.conf" 644 usr/lib/sysctl.d
+
+	# ── udev rules (package-owned dir) ──────────────────────
+	vinstall "${FILESDIR}/60-cachyos-io.rules"   644 usr/lib/udev/rules.d
+	vinstall "${FILESDIR}/61-cachyos-misc.rules" 644 usr/lib/udev/rules.d
+
+	# ── NVIDIA modprobe options ─────────────────────────────
+	vinstall "${FILESDIR}/cachyos-nvidia.conf" 644 usr/lib/modprobe.d
+
+	# ── PAM limits: audio rtprio/nice/memlock ───────────────
+	vinstall "${FILESDIR}/20-cachyos-audio.conf" 644 etc/security/limits.d
+
+	# ── runit one-shot service: THP tuning at boot ──────────
+	# Unique name; no conflict with zramen / ananicy-cpp services.
+	vsv cachyos-boot-tune
+
+	# ── helper: fetch CachyOS ananicy rules into /etc/ananicy.d ──
+	vbin "${FILESDIR}/fetch-ananicy-rules.sh" cachyos-fetch-ananicy-rules
+}
