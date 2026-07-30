@@ -55,7 +55,7 @@ jobs:
             void-packages/common/travis/changed_templates.sh
           cat noid-packages/common/shlibs | tee -a \
             void-packages/common/shlibs
-          cp -r noid-packages/srcpkgs/* void-packages/srcpkgs/
+          for source in noid-packages/srcpkgs/*; do package=$(basename "$source") rm -rf "void-packages/srcpkgs/$package" cp -a "$source" "void-packages/srcpkgs/$package" done
 
       - name: Prepare masterdir
         run: |
