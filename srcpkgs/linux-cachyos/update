@@ -1,0 +1,2 @@
+site="https://github.com/CachyOS/linux/tags"
+pattern='cachyos-\K[\d.]+(?=-\d)'
