@@ -8,11 +8,14 @@ Unofficial third-party XBPS repository for a small selection of packages on Void
 ## Available packages
 
 - `brave-origin`
+- `cachyos-settings-runit`
 - `discord`
 - `helium-browser`
 - `heroic-games-launcher`
 - `spotify`
 - `tutanota-desktop`
+
+> Most packages repackage upstream binaries. `cachyos-settings-runit` is different: it is a source-free configuration package that ports the [CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) performance tuning (sysctl, udev I/O schedulers, THP, PAM limits, zram integration) to runit, with no dependency on systemd. See its template and `README` under `srcpkgs/cachyos-settings-runit/` for full details.
 
 ## Requirements
 
@@ -48,6 +51,23 @@ Install one package:
 sudo xbps-install brave-origin
 ```
 
+### Notes for `cachyos-settings-runit`
+
+This package installs configuration only; nothing is enabled automatically. After installing, apply the tuning and enable the services you want:
+
+```bash
+# Apply sysctl/udev now (or just reboot)
+sudo xbps-reconfigure -f cachyos-settings-runit
+sudo sysctl --system
+sudo udevadm control --reload && sudo udevadm trigger
+
+# Enable runit services
+sudo ln -s /etc/sv/cachyos-boot-tune /var/service/   # THP tuning at boot
+sudo ln -s /etc/sv/zramen            /var/service/   # compressed zram swap
+```
+
+`ananicy-cpp` is optional and is not a dependency (it is not in Void's official repos). See the package `README` for how to add it separately.
+
 ## Update
 
 Packages from this repository update through XBPS with the rest of the system:
@@ -76,6 +96,8 @@ Two workflows work together:
 
 In normal operation, packages track upstream within roughly six hours: the update workflow detects a new version, commits it, and dispatches a build that republishes the `latest` release.
 
+> Note: `cachyos-settings-runit` has no upstream version to track (it is source-free), so the update workflow does not bump it. To publish changes, edit its files under `srcpkgs/cachyos-settings-runit/`, increment `revision` in its template, and push to `main` to trigger a build.
+
 Required repository secrets:
 
 - `PRIVATE_PEM` - encrypted private key used to sign repository metadata and packages
@@ -92,6 +114,8 @@ Do not commit signing keys, passphrases, access tokens, or other secrets to this
 ## Credits
 
 Forked from and based on the packaging and automation work in [`noid-linux/xbps-repo`](https://github.com/noid-linux/xbps-repo).
+
+Tuning in `cachyos-settings-runit` is derived from [CachyOS/CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) (GPL-3.0).
 
 ## License
 
