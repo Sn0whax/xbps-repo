@@ -109,6 +109,24 @@ jobs:
           done
           git diff -- srcpkgs/brave-origin srcpkgs/discord srcpkgs/helium-browser srcpkgs/heroic-games-launcher srcpkgs/spotify srcpkgs/tutanota-desktop
 
+      - name: Update ananicy-cpp and faugus-launcher
+        run: |
+          set -u
+          t2="$(mktemp -d)"; trap 'rm -rf "$t2"' EXIT
+          bump() {
+            local pkg="$1" v="$2" t="srcpkgs/$1/template"
+            [ -n "$v" ] || { echo "$pkg: no version — skip"; return 0; }
+            local cur; cur="$(sed -n 's/^version=//p' "$t")"
+            [ "$v" = "$cur" ] && { echo "$pkg: up-to-date ($cur)"; return 0; }
+            local url; url="$( eval "$(grep -E '^(version|revision|_[A-Za-z0-9_]+)=' "$t" | sed "s/^version=.*/version=$v/")"; u="$(sed -n 's/^distfiles=//p' "$t" | head -1 | tr -d '\"')"; eval "u=\"$u\""; printf '%s' "$u" )"
+            curl --retry 4 --retry-all-errors -fL "$url" -o "$t2/$pkg.src" || { echo "$pkg: fetch failed — skip"; return 0; }
+            local sum; sum="$(sha256sum "$t2/$pkg.src" | awk '{print $1}')"
+            sed -i -e "s/^version=.*/version=$v/" -e 's/^revision=.*/revision=1/' -e "s/^checksum=.*/checksum=$sum/" "$t"
+            echo "$pkg: $cur -> $v"
+          }
+          av="$(git ls-remote --tags --refs https://gitlab.com/ananicy-cpp/ananicy-cpp | grep -oP 'refs/tags/v\K[0-9.]+' | sort -V | tail -1)"; bump ananicy-cpp "$av"
+          fv="$(git ls-remote --tags --refs https://github.com/Faugus/faugus-launcher | grep -oP 'refs/tags/\K[0-9][0-9.]+' | sort -V | tail -1)"; bump faugus-launcher "$fv"
+
       - name: Commit updates
         id: commit
         shell: bash
