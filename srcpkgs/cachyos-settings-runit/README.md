@@ -22,6 +22,8 @@ It delivers the "feels-like-CachyOS" tuning layer — sysctl, udev, THP, PAM lim
 
 **Hard dependencies:** `zramen`, `hdparm` (both in Void's official repos).
 
+**Recommended companion:** `ananicy-cpp` (also shipped by `Sn0whax/xbps-repo`) — see below.
+
 ---
 
 ## Tuning details
@@ -55,6 +57,8 @@ It delivers the "feels-like-CachyOS" tuning layer — sysctl, udev, THP, PAM lim
 | Rotational HDD (`sd*`, `mmcblk*`) | `bfq` |
 | SATA/eMMC SSD (non-rotational) | `mq-deadline` |
 | NVMe SSD (`nvme*n*`) | `adios` else `kyber` |
+
+> `adios` is an out-of-tree scheduler present only on kernels built with the ADIOS patch (e.g. the CachyOS kernel). The rule writes `kyber` first, then attempts `adios`; if `adios` isn't compiled in, that write no-ops and `kyber` remains.
 
 ### Misc device tuning — `61-cachyos-misc.rules`
 
@@ -123,23 +127,29 @@ zramctl
 
 ---
 
-## Optional: ananicy-cpp (per-app nice/io tuning)
+## Companion: ananicy-cpp (per-app nice/io tuning)
 
-**Not required and not a dependency.** All tuning above works without it.
-`ananicy-cpp` is **not** in Void's official repos, so it must be built from a
-community template first:
+**Optional but recommended.** All tuning above works without it; `ananicy-cpp`
+adds per-application nice/ioclass/sched auto-tuning for smoother behavior under
+load. It is **built and shipped by `Sn0whax/xbps-repo`**, so no manual template
+build is needed — just install it:
 
-1. Build `ananicy-cpp` (see
-   [`prostitutionofthesoul/ananicy-cpp-void-template`](https://github.com/prostitutionofthesoul/ananicy-cpp-void-template)).
-2. Fetch the CachyOS rule set:
+1. Install the package:
+   ```sh
+   sudo xbps-install ananicy-cpp
+   ```
+2. Fetch the CachyOS rule set (the helper is provided by this package):
    ```sh
    sudo cachyos-fetch-ananicy-rules
    ```
 3. Enable the daemon (service action is `start`, not `run`):
    ```sh
    sudo ln -s /etc/sv/ananicy-cpp /var/service/
-   sudo sv restart ananicy-cpp
+   sudo sv status ananicy-cpp
    ```
+
+The default config is installed to `/etc/ananicy-cpp/ananicy.conf`; rules live
+in `/etc/ananicy.d/`.
 
 ---
 
@@ -160,13 +170,14 @@ community template first:
 - `snd-hda-intel` AC/battery audio power toggle (laptop anti-crackle)
 - Wi-Fi regulatory-domain trigger (region-specific)
 
-### Packaging fix history
+### Packaging history
 
-- **`depends` corrected:** `ananicy-cpp` was **removed** from `depends`.
-  It is not in Void's repos, so hard-depending on it made the package
-  **unbuildable** (`target dependency 'ananicy-cpp' does not exist`) and would
-  have made it uninstallable. It is now an optional, separately-installed
-  component. Current: `depends="zramen hdparm"`.
+- **`ananicy-cpp` is no longer a hard dependency.** It was removed from
+  `depends` because it did not exist in any repo at packaging time, which made
+  this package unbuildable (`target dependency 'ananicy-cpp' does not exist`).
+  It is now a **separate, optional companion package built and shipped by
+  `Sn0whax/xbps-repo`** — install it alongside for the full experience.
+  Current: `depends="zramen hdparm"`.
 
 ---
 
