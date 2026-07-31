@@ -69,14 +69,6 @@ sudo xbps-install -S
 
 On first use, XBPS may ask whether to import and trust this repository's signing key. Verify the displayed fingerprint before accepting it.
 
-## Install packages
-
-Install one package:
-
-```bash
-sudo xbps-install brave-origin
-```
-
 ### Notes for the CachyOS kernels
 
 Install the baseline kernel:
