@@ -185,45 +185,6 @@ sudo rm /etc/xbps.d/sn0whax-xbps-repo.conf
 
 Removing the repository configuration does not uninstall packages that were already installed from it.
 
-## Build and release automation
-
-Three workflows work together:
-
-- **`.github/workflows/update-packages.yaml`** — the **6-hour** updater. Runs on `cron: "17 */6 * * *"` (UTC) and on manual dispatch. It discovers new upstream versions for the fast-moving packages (`brave-origin`, `discord`, `helium-browser`, `heroic-games-launcher`, `spotify`, `tutanota-desktop`, `ananicy-cpp`, `faugus-launcher`), rewrites the affected template's `version`/`checksum`, commits, and triggers a build. If nothing is newer, it exits without building.
-
-- **`.github/workflows/update-packages-kernel.yaml`** — the **24-hour** updater for heavy, compile-from-source packages. Runs on `cron: "23 4 * * *"` (UTC) and on manual dispatch. It detects new versions of `linux-cachyos`, `linux-cachyos-v3`, `nlohmann-json`, and `nvidia`; for each, it reconstructs the source URL from the template, fetches the tarball, recomputes the `sha256` checksum, bumps `version`/`revision`/`checksum`, commits, and triggers a build. Kernel and driver builds are separated onto a daily cadence because each run compiles two full kernels plus the NVIDIA modules and takes considerably longer than the application updates.
-
-- **`.github/workflows/build.yaml`** — builds the current package templates, signs the resulting XBPS repository and packages, and publishes release assets to the `latest` GitHub release. It runs on pushes to `main` touching `srcpkgs/**` and on manual dispatch. It does **not** discover new upstream versions on its own; it only builds whatever the templates currently specify. Build dependencies between templates (for example, `ananicy-cpp` requiring `nlohmann-json`) are resolved automatically by `xbps-src`.
-
-In normal operation, applications track upstream within roughly six hours and kernels/drivers within about a day: an update workflow detects a new version, commits it, and dispatches a build that republishes the `latest` release.
-
-### Build pipeline correctness
-
-The `build.yaml` release step uploads the **exact** package archives that were indexed and signed (`~/packages/*.xbps` together with their `.sig2` signatures and the generated `x86_64-repodata`). This guarantees that, for every package, the served `.xbps`, its `.sig2` signature, and the recorded `repodata` hash all describe the same archive. Uploading a pre-index copy of a package instead would produce an RSA signature mismatch at install time.
-
-The masterdir setup does **not** add this repository as a remote build source. Building is self-contained against Void's official repositories, which avoids an interactive "import public key?" prompt that would otherwise block a non-interactive CI run.
-
-> Note: `cachyos-settings-runit` has a fixed version that the update workflows do not auto-bump (it is source-free). `nlohmann-json` is bumped by the 24-hour workflow but is normally held at the version `ananicy-cpp` expects. To publish changes to any package manually, edit the template, increment `revision` (or `version`), and push to `main` to trigger a build.
-
-Required repository secrets:
-
-- `PRIVATE_PEM` — encrypted private key used to sign repository metadata and packages
-- `PRIVATE_PEM_PASSPHRASE` — passphrase for the signing key
-
-GitHub provides `GITHUB_TOKEN` automatically. The workflow requires `contents: write` permission to update release assets.
-
-## Troubleshooting
-
-**`the RSA signature is not valid!` on install.** The served package archive does not match its signature/repodata. This is a publishing desync, not a corrupt download. The fix is to rebuild the affected package so its archive, `.sig2`, and repodata are regenerated together — bump the template's `revision` and push to `main`, then re-run `sudo xbps-install -S`. The build pipeline uploads indexed-and-signed archives specifically to prevent this.
-
-**A build hangs for a long time on "Build and check packages".** In CI this is usually an interactive prompt with no TTY (for example importing an untrusted repository key). Builds here are kept self-contained against Void's official repositories to avoid it.
-
-## Security
-
-Packages may repackage upstream binaries rather than compile applications from source. Inspect each template in `srcpkgs/` for its source URL, checksum, dependencies, and installation steps.
-
-Do not commit signing keys, passphrases, access tokens, or other secrets to this repository.
-
 ## Credits
 
 Forked from and based on the packaging and automation work in [`noid-linux/xbps-repo`](https://github.com/noid-linux/xbps-repo).
