@@ -171,10 +171,10 @@ jobs:
         shell: bash
         run: |
           mkdir ~/release
-          cp ~/new_packages/* ~/release/
-          cp ~/packages/x86_64-repodata ~/release
-          for pkg in $(basename -s .xbps ~/new_packages/*.xbps); do
-            cp ~/packages/"$pkg".xbps.sig2 ~/release
+          cp ~/packages/x86_64-repodata ~/release/
+          # upload the EXACT archives that were indexed + signed, plus their sigs
+          for f in ~/packages/*.xbps; do
+            cp "$f" "$f.sig2" ~/release/
           done
 
       - name: Upload built packages

@@ -1,7 +1,7 @@
 # Template file for 'ananicy-cpp'
 pkgname=ananicy-cpp
 version=1.2.0
-revision=1
+revision=2
 _tag="v${version}"
 wrksrc="ananicy-cpp-${_tag}"
 build_style=cmake
