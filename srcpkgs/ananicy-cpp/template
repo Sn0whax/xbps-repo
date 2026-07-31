@@ -5,7 +5,7 @@ revision=1
 _tag="v${version}"
 wrksrc="ananicy-cpp-${_tag}"
 build_style=cmake
-configure_args="-DCPM_USE_LOCAL_PACKAGES=ON -DBUILD_TESTING=OFF -Wno-dev"
+configure_args="-DCPM_USE_LOCAL_PACKAGES=ON -DBUILD_TESTING=OFF -DENABLE_SYSTEMD=OFF -Wno-dev"
 hostmakedepends="cmake pkg-config git clang llvm lld bpftool"
 makedepends="fmt-devel spdlog nlohmann-json libbpf-devel elfutils-devel
  pcre2-devel zlib-devel"
