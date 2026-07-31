@@ -7,15 +7,17 @@ Unofficial third-party XBPS repository for a small selection of packages on Void
 
 ## Available packages
 
+- `ananicy-cpp`
 - `brave-origin`
 - `cachyos-settings-runit`
 - `discord`
 - `helium-browser`
 - `heroic-games-launcher`
+- `nlohmann-json`
 - `spotify`
 - `tutanota-desktop`
 
-> Most packages repackage upstream binaries. `cachyos-settings-runit` is different: it is a source-free configuration package that ports the [CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) performance tuning (sysctl, udev I/O schedulers, THP, PAM limits, zram integration) to runit, with no dependency on systemd. See its template and `README` under `srcpkgs/cachyos-settings-runit/` for full details.
+> Packages fall into three kinds. Most repackage upstream binaries (`brave-origin`, `discord`, `helium-browser`, `heroic-games-launcher`, `spotify`, `tutanota-desktop`). `cachyos-settings-runit` is a source-free configuration package that ports the [CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) performance tuning (sysctl, udev I/O schedulers, THP, PAM limits, zram integration) to runit, with no dependency on systemd. `ananicy-cpp` and `nlohmann-json` are compiled from source by the build workflow: `ananicy-cpp` is a C++ rewrite of Ananicy for per-app nice/ioclass/sched auto-tuning (built with systemd integration disabled and shipping a runit service), and `nlohmann-json` is a header-only JSON library packaged as its build dependency. See each template and `README` under `srcpkgs/` for full details.
 
 ## Requirements
 
@@ -66,7 +68,18 @@ sudo ln -s /etc/sv/cachyos-boot-tune /var/service/   # THP tuning at boot
 sudo ln -s /etc/sv/zramen            /var/service/   # compressed zram swap
 ```
 
-`ananicy-cpp` is optional and is not a dependency (it is not in Void's official repos). See the package `README` for how to add it separately.
+### Notes for `ananicy-cpp`
+
+`ananicy-cpp` is built and shipped by this repository. It requires a rules set to do anything useful:
+
+```bash
+sudo xbps-install ananicy-cpp
+sudo cachyos-fetch-ananicy-rules      # helper provided by cachyos-settings-runit
+sudo ln -s /etc/sv/ananicy-cpp /var/service/
+sudo sv status ananicy-cpp
+```
+
+The runit service runs `ananicy-cpp start` in the foreground under supervision. The default config is installed to `/etc/ananicy-cpp/ananicy.conf`; rules live in `/etc/ananicy.d/`. `nlohmann-json` is pulled in automatically as a build dependency and does not need to be installed manually.
 
 ## Update
 
@@ -92,11 +105,11 @@ Two workflows work together:
 
 - **`.github/workflows/update-packages.yaml`** discovers new upstream versions. It runs automatically every 6 hours (`cron: "17 */6 * * *"`, UTC) and on manual dispatch. When it finds a newer version it rewrites the affected template's `version`/`checksum`, commits the change, and triggers the build workflow. If nothing is newer, it exits without building.
 
-- **`.github/workflows/build.yaml`** builds the current package templates, signs the resulting XBPS repository, and publishes release assets to the `latest` GitHub release. It runs on pushes to `main` touching `srcpkgs/**` and on manual dispatch. It does **not** discover new upstream versions on its own; it only builds whatever the templates currently specify.
+- **`.github/workflows/build.yaml`** builds the current package templates, signs the resulting XBPS repository, and publishes release assets to the `latest` GitHub release. It runs on pushes to `main` touching `srcpkgs/**` and on manual dispatch. It does **not** discover new upstream versions on its own; it only builds whatever the templates currently specify. Build dependencies between templates (for example, `ananicy-cpp` requiring `nlohmann-json`) are resolved automatically by `xbps-src`.
 
 In normal operation, packages track upstream within roughly six hours: the update workflow detects a new version, commits it, and dispatches a build that republishes the `latest` release.
 
-> Note: `cachyos-settings-runit` has no upstream version to track (it is source-free), so the update workflow does not bump it. To publish changes, edit its files under `srcpkgs/cachyos-settings-runit/`, increment `revision` in its template, and push to `main` to trigger a build.
+> Note: `cachyos-settings-runit` and `nlohmann-json` have fixed versions that the update workflow does not auto-bump (the former is source-free; the latter is pinned to the version `ananicy-cpp` expects). `ananicy-cpp` tracks a GitLab tag. To publish changes to any of these, edit the template, increment `revision` (or `version`) in its template, and push to `main` to trigger a build.
 
 Required repository secrets:
 
@@ -115,7 +128,7 @@ Do not commit signing keys, passphrases, access tokens, or other secrets to this
 
 Forked from and based on the packaging and automation work in [`noid-linux/xbps-repo`](https://github.com/noid-linux/xbps-repo).
 
-Tuning in `cachyos-settings-runit` is derived from [CachyOS/CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) (GPL-3.0).
+Tuning in `cachyos-settings-runit` is derived from [CachyOS/CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) (GPL-3.0). `ananicy-cpp` is built from [ananicy-cpp](https://gitlab.com/ananicy-cpp/ananicy-cpp) (GPL-3.0).
 
 ## License
 
