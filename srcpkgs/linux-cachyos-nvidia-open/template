@@ -1,0 +1,82 @@
+# Template build file for 'linux-cachyos-nvidia-open'
+#
+# Prebuilt NVIDIA open-gpu kernel module (nvidia, nvidia-modeset, nvidia-drm,
+# nvidia-uvm, nvidia-peermem) compiled in CI against the exact linux-cachyos
+# build it pairs with. Replaces the DKMS local-compile path.
+#
+# There is a matching template 'linux-cachyos-v3-nvidia-open' that is identical
+# except _kflavour=linux-cachyos-v3 (see the two vars flagged below).
+
+pkgname=linux-cachyos-nvidia-open
+version=610.43.03
+revision=1
+
+# ---- the two vars that differ between the baseline and -v3 module packages ----
+_kflavour=linux-cachyos      # <-- linux-cachyos-v3 in the v3 template
+# -------------------------------------------------------------------------------
+
+# Kernel release string as it appears under /usr/lib/modules/<here>.
+# Must match what the kernel package installs (e.g. 7.1.5-cachyos / 7.1.5-cachyos-v3).
+# Derived in pre_build from the installed kernel so it can never drift.
+_kernrel=""
+
+archs="x86_64"
+hostmakedepends="tar which"
+# Pull in the kernel we build against; its build tree lives at
+# /usr/lib/modules/${_kernrel}/build (integrated headers, no -headers pkg).
+makedepends="${_kflavour}"
+short_desc="NVIDIA open GPU kernel modules for ${_kflavour} (prebuilt)"
+maintainer="Sn0whax <you@example.com>"
+license="MIT, GPL-2.0-only"
+homepage="https://github.com/NVIDIA/open-gpu-kernel-modules"
+distfiles="https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${version}.tar.gz"
+checksum=9df87d753cd9c05aa0eedc462af9b35debb549a657136e863282f94c96ee2640
+
+# Kernel modules must not be stripped by the usual userspace stripper.
+nostrip=yes
+noverifyrdeps=yes
+
+pre_build() {
+	# Resolve the concrete kernel release string from the kernel package we
+	# were built against, so the module lands in the right modules dir and the
+	# strict dependency below can pin to the exact kernel version_revision.
+	_kernrel="$(cat "${XBPS_CROSS_BASE:-}"/usr/lib/modules/*-cachyos*/kernelrelease 2>/dev/null | head -1)"
+	if [ -z "$_kernrel" ]; then
+		# Fallback: derive from the modules directory name.
+		_kernrel="$(basename "$(ls -d "${XBPS_CROSS_BASE:-}"/usr/lib/modules/*cachyos* | head -1)")"
+	fi
+	msg_normal "Building NVIDIA open modules against kernel ${_kernrel}\n"
+}
+
+do_build() {
+	local ksrc="/usr/lib/modules/${_kernrel}/build"
+	[ -d "$ksrc" ] || msg_error "kernel build tree not found at ${ksrc}\n"
+	# open-gpu-kernel-modules builds with the kernel's own build system.
+	make -C "${wrksrc}" modules \
+		SYSSRC="${ksrc}" \
+		CC="${CC:-gcc}" LD="${LD:-ld}" \
+		-j"${XBPS_MAKEJOBS}"
+}
+
+do_install() {
+	local moddir="usr/lib/modules/${_kernrel}/kernel/drivers/video"
+	vmkdir "${moddir}"
+	# Install and zstd-compress each produced .ko (matches how the kernel pkg
+	# ships its modules; depmod is run by the kernel's post-install trigger).
+	for ko in "${wrksrc}"/kernel-open/*.ko; do
+		install -Dm644 "$ko" "${DESTDIR}/${moddir}/$(basename "$ko")"
+		zstd -q --rm -19 "${DESTDIR}/${moddir}/$(basename "$ko")"
+	done
+	# Strictly pin to the exact kernel version_revision so xbps can never
+	# install this module against a mismatched kernel.
+	local kpkgver
+	kpkgver="$(xbps-query -R --property=pkgver "${_kflavour}" 2>/dev/null | sed "s/^${_kflavour}-//")"
+	depends="${_kflavour}=${kpkgver}"
+}
+
+post_install() {
+	# Ensure module dependencies are rebuilt for this kernel on install.
+	# (The kernel package already ships an initramfs-regenerate / depmod trigger;
+	# this keeps behaviour explicit for the added modules.)
+	:
+}

@@ -47,15 +47,15 @@ jobs:
         run: git clone --depth=1 --branch=master https://github.com/void-linux/void-packages
 
       - name: Checkout custom packages
-        run: git clone --depth=1 --branch=main https://github.com/${{ github.repository }} noid-packages
+        run: git clone --depth=1 --branch=main https://github.com/${{ github.repository }} custom-packages
 
       - name: Merge custom repositories
         run: |
-          cp -f noid-packages/common/travis/changed_templates.sh \
+          cp -f custom-packages/common/travis/changed_templates.sh \
             void-packages/common/travis/changed_templates.sh
-          cat noid-packages/common/shlibs | tee -a \
+          cat custom-packages/common/shlibs | tee -a \
             void-packages/common/shlibs
-          for source in noid-packages/srcpkgs/*; do package=$(basename "$source"); rm -rf "void-packages/srcpkgs/$package"; cp -a "$source" "void-packages/srcpkgs/$package"; done
+          for source in custom-packages/srcpkgs/*; do package=$(basename "$source"); rm -rf "void-packages/srcpkgs/$package"; cp -a "$source" "void-packages/srcpkgs/$package"; done
       - name: Prepare masterdir
         run: |
           cd void-packages
@@ -79,7 +79,7 @@ jobs:
               spotify \
               tutanota-desktop > /tmp/templates
           else
-            cd noid-packages
+            cd custom-packages
             sudo -Eu builder ./common/travis/changed_templates.sh
           fi
 
