@@ -11,13 +11,14 @@ Unofficial third-party XBPS repository for a small selection of packages on Void
 - `brave-origin`
 - `cachyos-settings-runit`
 - `discord`
+- `faugus-launcher`
 - `helium-browser`
 - `heroic-games-launcher`
 - `nlohmann-json`
 - `spotify`
 - `tutanota-desktop`
 
-> Packages fall into three kinds. Most repackage upstream binaries (`brave-origin`, `discord`, `helium-browser`, `heroic-games-launcher`, `spotify`, `tutanota-desktop`). `cachyos-settings-runit` is a source-free configuration package that ports the [CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) performance tuning (sysctl, udev I/O schedulers, THP, PAM limits, zram integration) to runit, with no dependency on systemd. `ananicy-cpp` and `nlohmann-json` are compiled from source by the build workflow: `ananicy-cpp` is a C++ rewrite of Ananicy for per-app nice/ioclass/sched auto-tuning (built with systemd integration disabled and shipping a runit service), and `nlohmann-json` is a header-only JSON library packaged as its build dependency. See each template and `README` under `srcpkgs/` for full details.
+> Packages fall into three kinds. Most repackage upstream binaries (`brave-origin`, `discord`, `faugus-launcher`, `helium-browser`, `heroic-games-launcher`, `spotify`, `tutanota-desktop`). `cachyos-settings-runit` is a source-free configuration package that ports the [CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) performance tuning (sysctl, udev I/O schedulers, THP, PAM limits, zram integration) to runit, with no dependency on systemd. `ananicy-cpp` and `nlohmann-json` are compiled from source by the build workflow: `ananicy-cpp` is a C++ rewrite of Ananicy for per-app nice/ioclass/sched auto-tuning (built with systemd integration disabled and shipping a runit service), and `nlohmann-json` is a header-only JSON library packaged as its build dependency. See each template and `README` under `srcpkgs/` for full details.
 
 ## Requirements
 
@@ -81,6 +82,16 @@ sudo sv status ananicy-cpp
 
 The runit service runs `ananicy-cpp start` in the foreground under supervision. The default config is installed to `/etc/ananicy-cpp/ananicy.conf`; rules live in `/etc/ananicy.d/`. `nlohmann-json` is pulled in automatically as a build dependency and does not need to be installed manually.
 
+### Notes for `faugus-launcher`
+
+A GTK4 front-end for running Windows games via UMU-Launcher (Proton). It is a Python application repackaged from the upstream Debian `.deb`; all Python and GObject-introspection dependencies are pulled from Void's official repositories automatically:
+
+```bash
+sudo xbps-install faugus-launcher
+```
+
+`umu-launcher` is not a hard dependency — Faugus downloads and manages Proton/UMU at runtime through its built-in Proton Manager.
+
 ## Update
 
 Packages from this repository update through XBPS with the rest of the system:
@@ -109,7 +120,7 @@ Two workflows work together:
 
 In normal operation, packages track upstream within roughly six hours: the update workflow detects a new version, commits it, and dispatches a build that republishes the `latest` release.
 
-> Note: `cachyos-settings-runit` and `nlohmann-json` have fixed versions that the update workflow does not auto-bump (the former is source-free; the latter is pinned to the version `ananicy-cpp` expects). `ananicy-cpp` tracks a GitLab tag. To publish changes to any of these, edit the template, increment `revision` (or `version`) in its template, and push to `main` to trigger a build.
+> Note: `cachyos-settings-runit` and `nlohmann-json` have fixed versions that the update workflow does not auto-bump (the former is source-free; the latter is pinned to the version `ananicy-cpp` expects). `ananicy-cpp` tracks a GitLab tag; `faugus-launcher` tracks a GitHub tag. To publish changes to any package, edit the template, increment `revision` (or `version`), and push to `main` to trigger a build.
 
 Required repository secrets:
 
@@ -128,7 +139,7 @@ Do not commit signing keys, passphrases, access tokens, or other secrets to this
 
 Forked from and based on the packaging and automation work in [`noid-linux/xbps-repo`](https://github.com/noid-linux/xbps-repo).
 
-Tuning in `cachyos-settings-runit` is derived from [CachyOS/CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) (GPL-3.0). `ananicy-cpp` is built from [ananicy-cpp](https://gitlab.com/ananicy-cpp/ananicy-cpp) (GPL-3.0).
+Tuning in `cachyos-settings-runit` is derived from [CachyOS/CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) (GPL-3.0). `ananicy-cpp` is built from [ananicy-cpp](https://gitlab.com/ananicy-cpp/ananicy-cpp) (GPL-3.0). `faugus-launcher` is repackaged from [Faugus/faugus-launcher](https://github.com/Faugus/faugus-launcher) (MIT).
 
 ## License
 
