@@ -1,0 +1,3 @@
+#!/bin/sh
+# ananicy-cpp runit service. Action is 'start' (foreground). Runs as root.
+exec ananicy-cpp start 2>&1

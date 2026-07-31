@@ -1,0 +1,24 @@
+# Template file for 'ananicy-cpp'
+pkgname=ananicy-cpp
+version=1.2.0
+revision=1
+_tag="v${version}"
+wrksrc="ananicy-cpp-${_tag}"
+build_style=cmake
+configure_args="-DCPM_USE_LOCAL_PACKAGES=ON -DBUILD_TESTING=OFF -Wno-dev"
+hostmakedepends="cmake pkg-config git clang llvm lld bpftool"
+makedepends="fmt-devel spdlog nlohmann-json libbpf-devel elfutils-devel
+ pcre2-devel zlib-devel"
+short_desc="Ananicy rewritten in C++ for lower CPU and memory usage"
+maintainer="Sn0whax <47508022+Sn0whax@users.noreply.github.com>"
+license="GPL-3.0-or-later"
+homepage="https://gitlab.com/ananicy-cpp/ananicy-cpp"
+distfiles="https://gitlab.com/ananicy-cpp/ananicy-cpp/-/archive/${_tag}/ananicy-cpp-${_tag}.tar.gz"
+checksum=d75157b9588748ce6ae04c3e2d71625d8eec6bf2d23e06f8cb6f9687c74813f7
+
+post_install() {
+	vsv ananicy-cpp
+	vinstall ${FILESDIR}/ananicy.conf 644 etc/ananicy-cpp
+	vmkdir etc/ananicy.d
+	vlicense LICENSE
+}

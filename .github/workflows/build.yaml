@@ -71,10 +71,13 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             printf '%s\n' \
+              ananicy-cpp \
               brave-origin \
+              cachyos-settings-runit \
               discord \
               helium-browser \
               heroic-games-launcher \
+              nlohmann-json \
               spotify \
               tutanota-desktop > /tmp/templates
           else
