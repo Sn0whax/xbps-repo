@@ -1,0 +1,42 @@
+# Template file for 'faugus-launcher'
+pkgname=faugus-launcher
+version=2.0.4
+revision=1
+archs="x86_64"
+create_wrksrc=yes
+hostmakedepends="python3"
+depends="python3-gobject python3-requests python3-Pillow python3-vdf
+ python3-psutil python3-dbus python3-icoextract gtk4 libadwaita libmanette"
+short_desc="Lightweight app for running Windows games via UMU-Launcher"
+maintainer="Sn0whax <47508022+Sn0whax@users.noreply.github.com>"
+license="MIT"
+homepage="https://github.com/Faugus/faugus-launcher"
+distfiles="https://github.com/Faugus/faugus-launcher/releases/download/${version}/faugus-launcher_${version}-1_all.deb"
+checksum=958f288906a251d76beaae7921c3c01293ad86b9c35850b37fcb187ae1990ecb
+
+do_install() {
+	local sitelib
+	sitelib="usr/lib/python$(python3 -c 'import sys;print("%d.%d"%sys.version_info[:2])')/site-packages"
+
+	# Relocate Python module from Debian dist-packages -> Void site-packages
+	rm -rf usr/lib/python3/dist-packages/faugus/__pycache__
+	vmkdir "${sitelib}"
+	vcopy usr/lib/python3/dist-packages/faugus "${sitelib}"
+	python3 -m compileall -q -d "/${sitelib}/faugus" \
+		"${DESTDIR}/${sitelib}/faugus" || :
+
+	# Launcher entrypoint (POSIX sh wrapper -> python3 -m faugus.*)
+	vbin usr/bin/faugus-launcher
+
+	# Desktop integration + assets
+	vcopy usr/share/applications usr/share
+	vcopy usr/share/icons usr/share
+	vcopy usr/share/metainfo usr/share
+	vcopy usr/share/locale usr/share
+	vcopy usr/share/faugus-launcher usr/share
+
+	# License(s)
+	for _l in usr/share/licenses/faugus-launcher/*; do
+		[ -f "$_l" ] && vlicense "$_l"
+	done
+}
