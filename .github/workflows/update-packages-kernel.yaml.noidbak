@@ -1,0 +1,38 @@
+name: Update Kernel & Heavy Packages
+on:
+  schedule:
+    - cron: "23 4 * * *"      # daily 04:23 UTC
+  workflow_dispatch:
+concurrency: { group: update-package-templates, cancel-in-progress: false }
+permissions: { contents: write }
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect & bump heavy packages
+        run: |
+          set -u
+          tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+          bump() {                       # $1=pkg  $2=newversion
+            local pkg="$1" v="$2" t="srcpkgs/$1/template"
+            [ -n "$v" ] || { echo "$pkg: no version detected — skip"; return 0; }
+            local cur; cur="$(sed -n 's/^version=//p' "$t")"
+            [ "$v" = "$cur" ] && { echo "$pkg: up-to-date ($cur)"; return 0; }
+            local url; url="$( eval "$(grep -E '^(version|revision|_[A-Za-z0-9_]+)=' "$t" | sed "s/^version=.*/version=$v/")"; u="$(sed -n 's/^distfiles=//p' "$t" | head -1 | tr -d '\"')"; eval "u=\"$u\""; printf '%s' "$u" )"
+            curl --retry 4 --retry-all-errors -fL "$url" -o "$tmp/$pkg.src" || { echo "$pkg: fetch failed ($url) — skip"; return 0; }
+            local sum; sum="$(sha256sum "$tmp/$pkg.src" | awk '{print $1}')"
+            sed -i -e "s/^version=.*/version=$v/" -e 's/^revision=.*/revision=1/' -e "s/^checksum=.*/checksum=$sum/" "$t"
+            echo "$pkg: $cur -> $v  (sum $sum)"
+          }
+          kv="$(git ls-remote --tags --refs https://github.com/CachyOS/linux | grep -oP 'refs/tags/cachyos-\K[0-9.]+(?=-)' | sort -V | tail -1)"
+          bump linux-cachyos "$kv"; bump linux-cachyos-v3 "$kv"
+          jv="$(git ls-remote --tags --refs https://github.com/nlohmann/json | grep -oP 'refs/tags/v\K[0-9.]+' | sort -V | tail -1)"
+          bump nlohmann-json "$jv"
+          nv="$(curl -fsSL 'https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500' | grep -oP 'Current production branch release: \K[0-9.]+(?= \(x86)' | head -1)"
+          bump nvidia "$nv"
+      - name: Commit updates
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet || { git commit -am "auto: bump kernel/heavy packages"; git push; }

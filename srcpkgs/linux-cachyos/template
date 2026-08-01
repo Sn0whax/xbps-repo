@@ -8,8 +8,12 @@ license="GPL-2.0-only"
 homepage="https://github.com/CachyOS/linux-cachyos"
 arch="x86_64"
 _srcname="cachyos-${version}-${revision}"
-distfiles="https://github.com/CachyOS/linux/releases/download/${_srcname}/${_srcname}.tar.gz"
-checksum=8f9a217d724a0bfe38239ef7b9fbcd602a8fae1794501d4acb0e698d348713b9
+# NVIDIA open-gpu kernel module version (built as the nvidia-open subpackage).
+_nvver=610.43.03
+distfiles="https://github.com/CachyOS/linux/releases/download/${_srcname}/${_srcname}.tar.gz
+ https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${_nvver}.tar.gz"
+checksum="8f9a217d724a0bfe38239ef7b9fbcd602a8fae1794501d4acb0e698d348713b9
+ 9df87d753cd9c05aa0eedc462af9b35debb549a657136e863282f94c96ee2640"
 
 wrksrc="${_srcname}"
 
@@ -21,11 +25,15 @@ _kenver="${version}-cachyos"
 triggers="kernel-hooks"
 kernel_hooks_version="${_kenver}"
 
+# Ship the NVIDIA open kernel module as an OPT-IN subpackage. Installing
+# linux-cachyos does NOT pull this in; users choose it explicitly. It is built
+# against the in-tree kernel here so it always matches, and signed with the
+# kernel's own module-signing key.
+subpackages="linux-cachyos-nvidia-open"
+
 preserve=yes
 nopie=yes
 nostrip=yes
-
-# Files modified when external modules are built (populated in do_install)
 
 # Reproducible build
 export KBUILD_BUILD_TIMESTAMP=$(LC_ALL=C date -ud @${SOURCE_DATE_EPOCH:-0})
@@ -36,36 +44,46 @@ do_configure() {
 	cd "${wrksrc}"
 	# customized config
 	cp "${FILESDIR}/config" .config
-    scripts/config -e CACHY -e SCHED_BORE -e LTO_CLANG_THIN -d LTO_NONE -d LTO_CLANG_FULL
-    make LLVM=1 olddefconfig
+	scripts/config -e CACHY -e SCHED_BORE -e LTO_CLANG_THIN -d LTO_NONE -d LTO_CLANG_FULL
+	make LLVM=1 olddefconfig
 }
 
 do_build() {
 	cd "${wrksrc}"
 	export RUSTC_BOOTSTRAP=1
 	make LLVM=1 ${makejobs} 2>&1 | tee "${XBPS_SRCDISTDIR}/build-${pkgname}-${version}.log"
+
+	# --- NVIDIA open kernel module, built against the freshly built in-tree
+	# --- kernel. CachyOS recipe: clear userspace hardening flags (raw ld
+	# --- rejects -Wl,-z,relro) and use the kernel's Clang/lld thin-LTO toolchain.
+	local _nvsrc="${XBPS_BUILDDIR}/open-gpu-kernel-modules-${_nvver}"
+	msg_normal "Building NVIDIA open modules (${_nvver}) against in-tree kernel...\n"
+	CFLAGS= CXXFLAGS= LDFLAGS= make -C "${_nvsrc}" modules \
+		SYSSRC="${wrksrc}" SYSOUT="${wrksrc}" \
+		IGNORE_CC_MISMATCH=yes IGNORE_PREEMPT_RT_PRESENCE=1 \
+		CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 ${makejobs}
 }
 
 do_install() {
 	cd "${wrksrc}"
 	local _kernver
 	_kernver="$(make -s kernelrelease)"
-	
+
 	# Install kernel to /boot
 	vinstall arch/x86/boot/bzImage 644 boot "vmlinuz-${_kernver}"
 	vinstall System.map 644 boot "System.map-${_kernver}"
 	vinstall .config 644 boot "config-${_kernver}"
-	
+
 	# Install modules
 	make INSTALL_MOD_PATH="${DESTDIR}/usr" INSTALL_MOD_STRIP=1 modules_install
-	
+
 	# Create pkgbase file for mkinitcpio/dracut
 	vmkdir "usr/lib/modules/${_kernver}"
 	echo "${pkgname}" > "${DESTDIR}/usr/lib/modules/${_kernver}/pkgbase"
-	
+
 	# Also copy vmlinuz to modules dir for systemd hibernation
 	cp "${DESTDIR}/boot/vmlinuz-${_kernver}" "${DESTDIR}/usr/lib/modules/${_kernver}/vmlinuz"
-	
+
 	# Install headers
 	local _hdrdir="usr/lib/modules/${_kernver}/build"
 	# Remove symlink created by modules_install, we'll install headers properly
@@ -76,7 +94,7 @@ do_install() {
 	cp Makefile "${DESTDIR}/${_hdrdir}/"
 	cp Kbuild "${DESTDIR}/${_hdrdir}/" 2>/dev/null || true
 	cp System.map "${DESTDIR}/${_hdrdir}/System.map"
-	
+
 	if [ -f Module.symvers ]; then
 		cp Module.symvers "${DESTDIR}/${_hdrdir}/Module.symvers"
 	elif [ -f vmlinux.symvers ]; then
@@ -85,7 +103,7 @@ do_install() {
 	else
 		msg_warn "Module.symvers not found; installing headers without symbol version table"
 	fi
-	
+
 	# Required build files
 	vmkdir "${_hdrdir}/kernel"
 	cp kernel/Makefile "${DESTDIR}/${_hdrdir}/kernel/"
@@ -93,29 +111,68 @@ do_install() {
 	install -Dm644 "arch/x86/Makefile" "${DESTDIR}/${_hdrdir}/arch/x86/Makefile"
 	[ -f arch/x86/Makefile_32.cpu ] && install -Dm644 "arch/x86/Makefile_32.cpu" "${DESTDIR}/${_hdrdir}/arch/x86/Makefile_32.cpu"
 	[ -f arch/x86/kernel/asm-offsets.h ] && install -Dm644 "arch/x86/kernel/asm-offsets.h" "${DESTDIR}/${_hdrdir}/arch/x86/kernel/asm-offsets.h"
-	
+
 	# Copy scripts and includes
 	vcopy scripts "${_hdrdir}"
 	vcopy include "${_hdrdir}"
 	vcopy "arch/x86/include" "${_hdrdir}/arch/x86"
-	
+
 	# Install KConfig files needed for module builds
 	find . -name 'Kconfig*' -exec cp --parents {} "${DESTDIR}/${_hdrdir}/" \;
-	
+
 	# Install required driver headers
 	install -Dm644 drivers/md/*.h "${DESTDIR}/${_hdrdir}/drivers/md/" 2>/dev/null || true
 	install -Dm644 net/mac80211/*.h "${DESTDIR}/${_hdrdir}/net/mac80211/" 2>/dev/null || true
-	
+
 	# objtool needed for CONFIG_STACK_VALIDATION
 	install -Dm644 tools/objtool/objtool "${DESTDIR}/${_hdrdir}/tools/objtool/" 2>/dev/null || true
-	
+
 	# Verify Module.symvers
 	if [ ! -f "${DESTDIR}/${_hdrdir}/Module.symvers" ]; then
 		msg_error "Module.symvers not found - modules may fail to build"
 	fi
-	
-# Create /usr/src symlink for compatibility
+
+	# Create /usr/src symlink for compatibility
 	vmkdir "usr/src"
 	ln -sf "../lib/modules/${_kernver}/build" "${DESTDIR}/usr/src/${pkgname}"
+
+	# --- Install the NVIDIA open modules into extramodules/, sign them with the
+	# --- kernel's own module-signing key (same key/hash the kernel uses for its
+	# --- in-tree modules), then zstd-compress. These files are split out into
+	# --- the linux-cachyos-nvidia-open subpackage below.
+	local _nvsrc="${XBPS_BUILDDIR}/open-gpu-kernel-modules-${_nvver}"
+	local _extradir="usr/lib/modules/${_kernver}/extramodules"
+	vmkdir "${_extradir}"
+	for ko in "${_nvsrc}"/kernel-open/*.ko; do
+		install -Dm644 "$ko" "${DESTDIR}/${_extradir}/$(basename "$ko")"
+	done
+	# Sign with the kernel's generated module key, if module signing is enabled.
+	if [ -f certs/signing_key.pem ] && [ -f certs/signing_key.x509 ]; then
+		local _sighash
+		_sighash="$(sed -n 's/^CONFIG_MODULE_SIG_HASH="\(.*\)"/\1/p' .config)"
+		: "${_sighash:=sha512}"
+		for ko in "${DESTDIR}/${_extradir}"/*.ko; do
+			./scripts/sign-file "${_sighash}" certs/signing_key.pem certs/signing_key.x509 "$ko" \
+				|| msg_warn "sign-file failed on $(basename "$ko")"
+		done
+		msg_normal "Signed NVIDIA open modules with kernel module key (${_sighash}).\n"
+	else
+		msg_warn "Kernel module-signing key not found; NVIDIA open modules left unsigned.\n"
+	fi
+	# Compress to match how the kernel ships its modules.
+	for ko in "${DESTDIR}/${_extradir}"/*.ko; do
+		zstd -q --rm -19 "$ko"
+	done
 }
 
+linux-cachyos-nvidia-open_package() {
+	short_desc="NVIDIA open GPU kernel modules (${_nvver}) for ${sourcepkg}"
+	# Strict pin: this module set only matches THIS exact kernel build.
+	depends="${sourcepkg}>=${version}_${revision} ${sourcepkg}<=${version}_${revision}"
+	license="MIT, GPL-2.0-only"
+	nostrip=yes
+	noverifyrdeps=yes
+	pkg_install() {
+		vmove "usr/lib/modules/${_kenver}/extramodules"
+	}
+}

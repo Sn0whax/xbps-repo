@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            changed="ananicy-cpp brave-origin cachyos-settings-runit discord faugus-launcher helium-browser heroic-games-launcher nlohmann-json spotify tutanota-desktop linux-cachyos linux-cachyos-v3 nvidia"
+            changed="ananicy-cpp brave-origin cachyos-settings-runit discord faugus-launcher helium-browser heroic-games-launcher nlohmann-json spotify tutanota-desktop linux-cachyos linux-cachyos-v3 linux-cachyos-nvidia-open linux-cachyos-v3-nvidia-open nvidia"
           else
             changed="$(git diff --name-only HEAD^ HEAD -- srcpkgs/ | cut -d/ -f2 | sort -u | tr '\n' ' ')"
           fi
@@ -66,9 +66,9 @@ jobs:
       matrix:
         include:
           - name: kernel-cachyos
-            packages: "linux-cachyos"
+            packages: "linux-cachyos linux-cachyos-nvidia-open"
           - name: kernel-cachyos-v3
-            packages: "linux-cachyos-v3"
+            packages: "linux-cachyos-v3 linux-cachyos-v3-nvidia-open"
           - name: nvidia
             packages: "nvidia"
           - name: apps
@@ -85,7 +85,7 @@ jobs:
     steps:
       - name: Compute packages for this leg
         id: sel
-        shell: sh
+        shell: bash
         run: |
           CHANGED="${{ needs.detect.outputs.changed }}"
           TO_BUILD=""
