@@ -85,7 +85,7 @@ jobs:
     steps:
       - name: Compute packages for this leg
         id: sel
-        shell: bash
+        shell: sh
         run: |
           CHANGED="${{ needs.detect.outputs.changed }}"
           TO_BUILD=""
