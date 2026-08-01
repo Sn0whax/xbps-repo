@@ -1,188 +1,149 @@
 # Sn0whax XBPS Repository
 
-Unofficial third-party XBPS repository for a small selection of packages on Void Linux glibc, including CachyOS-optimized kernels, the NVIDIA proprietary driver stack, and performance-tuning tooling.
+Unofficial third-party [XBPS](https://docs.voidlinux.org/xbps/index.html) repository for Void Linux glibc (`x86_64`): CachyOS-optimized kernels with prebuilt signed NVIDIA modules, the NVIDIA userspace driver stack, and performance-tuning tools.
 
 > [!WARNING]
-> This repository is independently maintained and is not reviewed, endorsed, signed, or distributed by the Void Linux project. Review package templates and workflow runs before installing packages.
+> Independently maintained. Not reviewed, endorsed, or distributed by the Void Linux project. Review the templates in `srcpkgs/` and the workflow runs before installing.
 
-## Available packages
+## Packages
 
-**Kernels (CachyOS)**
+**Kernels (CachyOS — EEVDF + BORE, thin-LTO/Clang, 1000 Hz, THP)**
+- `linux-cachyos` — baseline `x86_64`
+- `linux-cachyos-v3` — optimized for the `x86_64-v3` feature level
+- `linux-cachyos-nvidia-open` / `linux-cachyos-v3-nvidia-open` — prebuilt NVIDIA open kernel modules, **opt-in**, matched and signed to their kernel (see NVIDIA notes)
 
-- `linux-cachyos` — CachyOS kernel (BORE scheduler, LRU_GEN, thin LTO), baseline `x86_64`
-- `linux-cachyos-v3` — same kernel built for the `x86_64-v3` microarchitecture level
-
-**Graphics (NVIDIA proprietary)**
-
-- `nvidia` — NVIDIA proprietary driver (production branch)
-- `nvidia-dkms`, `nvidia-firmware`, `nvidia-libs`, `nvidia-libs-32bit`, `nvidia-opencl`, `nvidia-gtklibs` — supporting driver components
+**NVIDIA userspace**
+- `nvidia` and its components: `nvidia-libs`, `nvidia-libs-32bit`, `nvidia-opencl`, `nvidia-firmware`, `nvidia-gtklibs`
 
 **Performance / tuning**
-
 - `ananicy-cpp` — per-app nice/ioclass/sched auto-tuning (built from source, runit service)
-- `cachyos-settings-runit` — CachyOS performance tuning ported to runit
-- `nlohmann-json` — header-only JSON library (build dependency of `ananicy-cpp`)
+- `cachyos-settings-runit` — CachyOS sysctl/udev/THP/zram tuning ported to runit (systemd-free)
+- `nlohmann-json` — header-only JSON lib (build dep of `ananicy-cpp`)
 
-**Applications (repackaged upstream binaries)**
+**Applications** (repackaged upstream binaries)
+- `brave-origin`, `discord`, `faugus-launcher`, `helium-browser`, `heroic-games-launcher`, `spotify`, `tutanota-desktop`
 
-- `brave-origin`
-- `discord`
-- `faugus-launcher`
-- `helium-browser`
-- `heroic-games-launcher`
-- `spotify`
-- `tutanota-desktop`
-
-> Packages fall into a few kinds. Most applications repackage upstream binaries (`brave-origin`, `discord`, `faugus-launcher`, `helium-browser`, `heroic-games-launcher`, `spotify`, `tutanota-desktop`). `cachyos-settings-runit` is a source-free configuration package that ports the [CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) performance tuning (sysctl, udev I/O schedulers, THP, PAM limits, zram integration) to runit, with no dependency on systemd. `ananicy-cpp` and `nlohmann-json` are compiled from source by the build workflow: `ananicy-cpp` is a C++ rewrite of Ananicy for per-app nice/ioclass/sched auto-tuning (built with systemd integration disabled and shipping a runit service), and `nlohmann-json` is a header-only JSON library packaged as its build dependency. The `linux-cachyos` kernels and the `nvidia` driver set are also built from source by the workflow. See each template and `README` under `srcpkgs/` for full details.
+> Kernels, the NVIDIA driver, `ananicy-cpp`, and `nlohmann-json` are compiled from source by CI. `cachyos-settings-runit` is config-only. The rest repackage upstream binaries. See each `srcpkgs/*/template` for source URLs, checksums, and dependencies.
 
 ## Requirements
 
-This repository targets Void Linux glibc on `x86_64`.
+Void Linux glibc on `x86_64`. Confirm glibc:
 
-Confirm that the system uses glibc:
-
-```console
+```bash
 ldd --version
 ```
 
-The `linux-cachyos-v3` variant additionally requires a CPU that supports the `x86_64-v3` feature level (roughly Intel Haswell / AMD Excavator and newer). Check compatibility with:
+The `-v3` kernel needs an `x86_64-v3`-capable CPU (roughly Intel Haswell / AMD Excavator and newer):
 
-```console
-/lib/ld-linux-x86-64.so.2 --help | grep -A1 x86-64-v3
+```bash
+/lib/ld-linux-x86-64.so.2 --help | grep x86-64-v3
 ```
 
-If `x86-64-v3 (supported, searched)` appears, the v3 kernel is safe to run; otherwise install the baseline `linux-cachyos`.
+If `x86-64-v3 (supported, searched)` appears, `-v3` is safe; otherwise use `linux-cachyos`.
 
 ## Add the repository
 
-Create an XBPS repository configuration file:
-
 ```bash
 echo 'repository=https://github.com/Sn0whax/xbps-repo/releases/latest/download' | sudo tee /etc/xbps.d/sn0whax-xbps-repo.conf
-```
-
-Refresh repository metadata:
-
-```bash
 sudo xbps-install -S
 ```
 
-On first use, XBPS may ask whether to import and trust this repository's signing key. Verify the displayed fingerprint before accepting it.
+On first use XBPS asks to import this repo's signing key — verify the fingerprint before accepting.
 
-### Notes for the CachyOS kernels
+## Install & configure
 
-Install the baseline kernel:
-
-```bash
-sudo xbps-install linux-cachyos
-```
-
-…or the `x86_64-v3`-optimized build (see the CPU check above):
+### CachyOS kernels
 
 ```bash
-sudo xbps-install linux-cachyos-v3
+sudo xbps-install linux-cachyos        # or linux-cachyos-v3
 ```
 
-The kernels ship with headers integrated (no separate `-headers` package) and are built with the CachyOS configuration: BORE scheduler, `CONFIG_CACHY`, 1000 Hz tick, thin LTO (Clang), and transparent hugepages. DKMS modules such as `nvidia-dkms` build against them automatically.
+Headers are integrated (no separate `-headers` package).
 
-**Secure Boot:** if the host uses an existing kernel-signing hook (for example `sbsigntool` under `/etc/kernel.d/post-install/`), the installed `vmlinuz` is signed automatically on install with the machine's enrolled DB/MOK key, exactly like Void's stock kernels. Confirm before rebooting:
+**Secure Boot:** if the host has a kernel-signing hook (e.g. `sbsigntool` in `/etc/kernel.d/post-install/`), the installed `vmlinuz` is signed on install with your enrolled DB/MOK key. Verify before rebooting — your previous kernel stays in GRUB as a fallback:
 
 ```bash
-sudo sbverify --list /boot/vmlinuz-$(uname -r)
+sudo sbverify --list /boot/vmlinuz-$(uname -r)   # want: "image signature verifies"
 ```
 
-A `signature 1 … image signature verifies` line means the kernel is signed for Secure Boot. Your previous kernel remains in the GRUB menu as a fallback in case a new kernel is ever rejected.
+### NVIDIA (prebuilt open modules — no DKMS)
 
-### Notes for `cachyos-settings-runit`
+The `nvidia-open` kernel module is built **in CI against the exact kernel** and **signed with that kernel's own module-signing key** (sha512/ECDSA) — so it works under Secure Boot module enforcement with no local compile and no DKMS. It is a separate **opt-in** package, strictly pinned to its kernel version; installing a kernel does **not** pull it automatically.
 
-This package installs configuration only; nothing is enabled automatically. After installing, apply the tuning and enable the services you want:
+> Requires a **Turing (RTX 20-series) or newer** GPU. Older GPUs are not supported by the open module.
 
 ```bash
-# Apply sysctl/udev now (or just reboot)
-sudo xbps-reconfigure -f cachyos-settings-runit
-sudo sysctl --system
-sudo udevadm control --reload && sudo udevadm trigger
-
-# Enable runit services
-sudo ln -s /etc/sv/cachyos-boot-tune /var/service/   # THP tuning at boot
-sudo ln -s /etc/sv/zramen            /var/service/   # compressed zram swap
+# baseline kernel + open module + userspace driver
+sudo xbps-install linux-cachyos linux-cachyos-nvidia-open \
+    nvidia-libs nvidia-libs-32bit nvidia-opencl nvidia-gtklibs
 ```
 
-Verify:
+Use `linux-cachyos-v3-nvidia-open` with the `-v3` kernel. Because the module is version-locked to its kernel, both update together via `xbps-install -Su`.
+
+### `cachyos-settings-runit`
+
+Config only — nothing is enabled automatically:
 
 ```bash
-cat /sys/kernel/mm/transparent_hugepage/enabled   # THP mode
-zramctl                                            # zram swap device
-sysctl vm.swappiness vm.max_map_count              # tuned values
+sudo xbps-reconfigure -f cachyos-settings-runit   # apply sysctl/udev now (or reboot)
+sudo ln -s /etc/sv/cachyos-boot-tune /var/service/   # THP tuning
+sudo ln -s /etc/sv/zramen            /var/service/   # zram swap
 ```
 
-### Notes for `ananicy-cpp`
+Verify: `cat /sys/kernel/mm/transparent_hugepage/enabled`, `zramctl`, `sysctl vm.swappiness`.
 
-`ananicy-cpp` is built and shipped by this repository. It requires a rules set to do anything useful:
+### `ananicy-cpp`
+
+Needs a rules set to do anything:
 
 ```bash
 sudo xbps-install ananicy-cpp
-sudo cachyos-fetch-ananicy-rules      # helper provided by cachyos-settings-runit
+sudo cachyos-fetch-ananicy-rules              # helper from cachyos-settings-runit
 sudo ln -s /etc/sv/ananicy-cpp /var/service/
-sudo sv status ananicy-cpp
 ```
 
-The runit service runs `ananicy-cpp start` in the foreground under supervision. The default config is installed to `/etc/ananicy-cpp/ananicy.conf`; rules live in `/etc/ananicy.d/` (the CachyOS rule set installs ~360 `.rules` files under `/etc/ananicy.d/00-default/`). `nlohmann-json` is pulled in automatically as a build dependency and does not need to be installed manually.
-
-Confirm it is actually tuning userspace processes (launch a browser or game first):
+Config: `/etc/ananicy-cpp/ananicy.conf`; rules: `/etc/ananicy.d/`. `nlohmann-json` comes in automatically as a build dep. Confirm it's tuning (launch a browser/game first):
 
 ```bash
 ps -eo pid,ni,cls,comm --sort=ni | awk '$4 !~ /kworker|ksoftirq|migration|rcu_/ && $2!=0' | head
 ```
 
-Non-zero `NI` values on real applications indicate the rules are firing.
+### `faugus-launcher`
 
-### Notes for `faugus-launcher`
-
-A GTK4 front-end for running Windows games via UMU-Launcher (Proton). It is a Python application repackaged from the upstream Debian `.deb`; all Python and GObject-introspection dependencies are pulled from Void's official repositories automatically:
+GTK4 front-end for Windows games via UMU/Proton. Python deps come from Void's repos automatically; `umu-launcher` isn't required (Faugus manages Proton at runtime):
 
 ```bash
 sudo xbps-install faugus-launcher
 ```
 
-`umu-launcher` is not a hard dependency — Faugus downloads and manages Proton/UMU at runtime through its built-in Proton Manager.
-
-### Notes for `nvidia`
-
-The proprietary NVIDIA driver and its components are built by the workflow. A typical install pairs the driver with a CachyOS kernel:
-
-```bash
-sudo xbps-install linux-cachyos nvidia nvidia-libs nvidia-libs-32bit nvidia-opencl nvidia-gtklibs
-```
-
-`nvidia-dkms` rebuilds the kernel module against installed kernels automatically.
-
 ## Update
-
-Packages from this repository update through XBPS with the rest of the system:
 
 ```bash
 sudo xbps-install -Su
 ```
 
-Newly published kernels are Secure Boot–signed on install by the host's kernel hook (see the kernel notes above). Nothing is auto-installed or auto-rebooted: the automation only builds and publishes ahead of time, and updates land on the machine only when you run `-Su`.
+CI builds and publishes ahead of time; nothing is auto-installed or auto-rebooted — updates land only when you run `-Su`. New kernels are Secure Boot–signed on install by the host hook.
 
 ## Remove the repository
-
-Remove the repository configuration:
 
 ```bash
 sudo rm /etc/xbps.d/sn0whax-xbps-repo.conf
 ```
 
-Removing the repository configuration does not uninstall packages that were already installed from it.
+This does not uninstall already-installed packages.
+
+## Build automation
+
+- **`update-packages.yaml`** (every 6 h) — detects new upstream versions for apps + `ananicy-cpp`/`faugus-launcher`, bumps templates, triggers a build.
+- **`update-packages-kernel.yaml`** (daily) — same for kernels, `nlohmann-json`, and `nvidia`; keeps the `nvidia-open` module version in lockstep with the driver.
+- **`build.yaml`** — parallel matrix build (kernels, NVIDIA, apps on separate runners), then a single job signs the full repo and publishes to the `latest` release. Built archives are uploaded exactly as indexed and signed, so the served `.xbps`, its `.sig2`, and the repodata always agree.
+
+Signing uses the `PRIVATE_PEM` / `PRIVATE_PEM_PASSPHRASE` repository secrets. Never commit keys, passphrases, or tokens.
 
 ## Credits
 
-Forked from and based on the packaging and automation work in [`noid-linux/xbps-repo`](https://github.com/noid-linux/xbps-repo).
-
-Kernel configuration and tuning are derived from [CachyOS/linux-cachyos](https://github.com/CachyOS/linux-cachyos) and [CachyOS/CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) (GPL-3.0). `ananicy-cpp` is built from [ananicy-cpp](https://gitlab.com/ananicy-cpp/ananicy-cpp) (GPL-3.0). `faugus-launcher` is repackaged from [Faugus/faugus-launcher](https://github.com/Faugus/faugus-launcher) (MIT). The NVIDIA driver remains subject to NVIDIA's proprietary license.
+Forked from [`noid-linux/xbps-repo`](https://github.com/noid-linux/xbps-repo). Kernel and tuning work derive from [CachyOS/linux-cachyos](https://github.com/CachyOS/linux-cachyos) and [CachyOS/CachyOS-Settings](https://github.com/CachyOS/CachyOS-Settings) (GPL-3.0); `ananicy-cpp` from [ananicy-cpp](https://gitlab.com/ananicy-cpp/ananicy-cpp) (GPL-3.0); `faugus-launcher` from [Faugus/faugus-launcher](https://github.com/Faugus/faugus-launcher) (MIT). The NVIDIA driver is subject to NVIDIA's proprietary license.
 
 ## License
 
-See [`LICENSE`](LICENSE). Individual applications remain subject to their respective upstream licenses and trademark terms.
+See [`LICENSE`](LICENSE). Individual applications remain subject to their upstream licenses and trademark terms.
