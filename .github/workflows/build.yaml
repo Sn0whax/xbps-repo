@@ -204,7 +204,7 @@ jobs:
         run: |
           mkdir -p ~/packages ~/new_packages
           shopt -s nullglob
-          built=(/tmp/legs/*.xbps)
+          mapfile -t built < <(find /tmp/legs -type f -name "*.xbps")
           if (( ${#built[@]} == 0 )); then
             echo "No packages were built by any leg; nothing to release."
             echo "HAVE_PKGS=no" >> "$GITHUB_ENV"
