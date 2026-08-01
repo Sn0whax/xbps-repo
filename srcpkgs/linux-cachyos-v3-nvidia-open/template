@@ -21,7 +21,7 @@ _kflavour=linux-cachyos-v3
 _kernrel=""
 
 archs="x86_64"
-hostmakedepends="tar which"
+hostmakedepends="tar which clang lld llvm"
 # Pull in the kernel we build against; its build tree lives at
 # /usr/lib/modules/${_kernrel}/build (integrated headers, no -headers pkg).
 makedepends="${_kflavour}"
@@ -51,11 +51,8 @@ pre_build() {
 do_build() {
 	local ksrc="/usr/lib/modules/${_kernrel}/build"
 	[ -d "$ksrc" ] || msg_error "kernel build tree not found at ${ksrc}\n"
-	# open-gpu-kernel-modules builds with the kernel's own build system.
-	make -C "${wrksrc}" modules \
-		SYSSRC="${ksrc}" \
-		CC="${CC:-gcc}" LD="${LD:-ld}" \
-		-j"${XBPS_MAKEJOBS}"
+	# CachyOS recipe: clear hardening flags (raw ld rejects -Wl,-z,relro), use kernel Clang/lld
+	CFLAGS= CXXFLAGS= LDFLAGS= make -C "${wrksrc}" modules SYSSRC="${ksrc}" SYSOUT="${ksrc}" KERNEL_UNAME="${_kernrel}" IGNORE_CC_MISMATCH=yes IGNORE_PREEMPT_RT_PRESENCE=1 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 -j"${XBPS_MAKEJOBS}"
 }
 
 do_install() {
