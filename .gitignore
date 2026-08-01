@@ -11,3 +11,7 @@
 # Build directories
 /hostdir/
 /masterdir/
+*.bak
+*.preSub
+*.preMatrix
+*.noidbak
