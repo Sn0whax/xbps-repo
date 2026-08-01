@@ -17,7 +17,6 @@ checksum="8f9a217d724a0bfe38239ef7b9fbcd602a8fae1794501d4acb0e698d348713b9
 
 create_wrksrc=yes
 wrksrc="${pkgname}-${version}"
-_kdir="${XBPS_BUILDDIR}/${wrksrc}/${_srcname}"
 
 makedepends="bc binutils clang lld llvm elfutils elfutils-devel flex bison gcc kmod libelf openssl-devel pahole
 perl python3 zlib-devel zstd xz cpio xxHash tar eudev-libudev-devel wireless-regdb rust rust-src rust-bindgen"
@@ -43,7 +42,7 @@ export KBUILD_BUILD_USER=voidlinux
 export KBUILD_BUILD_HOST=voidlinux
 
 do_configure() {
-	cd "${_kdir}"
+	cd "${wrksrc}/${_srcname}"
 	# customized config
 	cp "${FILESDIR}/config" .config
 	scripts/config -e CACHY -e SCHED_BORE -e LTO_CLANG_THIN -d LTO_NONE -d LTO_CLANG_FULL
@@ -51,23 +50,23 @@ do_configure() {
 }
 
 do_build() {
-	cd "${_kdir}"
+	cd "${wrksrc}/${_srcname}"
 	export RUSTC_BOOTSTRAP=1
 	make LLVM=1 ${makejobs} 2>&1 | tee "${XBPS_SRCDISTDIR}/build-${pkgname}-${version}.log"
 
 	# --- NVIDIA open kernel module, built against the freshly built in-tree
 	# --- kernel. CachyOS recipe: clear userspace hardening flags (raw ld
 	# --- rejects -Wl,-z,relro) and use the kernel's Clang/lld thin-LTO toolchain.
-	local _nvsrc="${XBPS_BUILDDIR}/${wrksrc}/open-gpu-kernel-modules-${_nvver}"
+	local _nvsrc="${wrksrc}/open-gpu-kernel-modules-${_nvver}"
 	msg_normal "Building NVIDIA open modules (${_nvver}) against in-tree kernel...\n"
 	CFLAGS= CXXFLAGS= LDFLAGS= make -C "${_nvsrc}" modules \
-		SYSSRC="${wrksrc}" SYSOUT="${wrksrc}" \
+		SYSSRC="${wrksrc}/${_srcname}" SYSOUT="${wrksrc}/${_srcname}" \
 		IGNORE_CC_MISMATCH=yes IGNORE_PREEMPT_RT_PRESENCE=1 \
 		CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 ${makejobs}
 }
 
 do_install() {
-	cd "${_kdir}"
+	cd "${wrksrc}/${_srcname}"
 	local _kernver
 	_kernver="$(make -s kernelrelease)"
 
@@ -142,7 +141,7 @@ do_install() {
 	# --- kernel's own module-signing key (same key/hash the kernel uses for its
 	# --- in-tree modules), then zstd-compress. These files are split out into
 	# --- the linux-cachyos-nvidia-open subpackage below.
-	local _nvsrc="${XBPS_BUILDDIR}/${wrksrc}/open-gpu-kernel-modules-${_nvver}"
+	local _nvsrc="${wrksrc}/open-gpu-kernel-modules-${_nvver}"
 	local _extradir="usr/lib/modules/${_kernver}/extramodules"
 	vmkdir "${_extradir}"
 	for ko in "${_nvsrc}"/kernel-open/*.ko; do
