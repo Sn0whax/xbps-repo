@@ -31,6 +31,11 @@ jobs:
           bump nlohmann-json "$jv"
           nv="$(curl -fsSL 'https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500' | grep -oP 'Current production branch release: \K[0-9.]+(?= \(x86)' | head -1)"
           bump nvidia "$nv"
+          # keep the open kernel module (kernel subpackage) in lockstep with the driver
+          if [ -n "$nv" ] && curl -fsSL -o "$tmp/nvopen.tgz" "https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${nv}.tar.gz"; then
+            nvsum="$(sha256sum "$tmp/nvopen.tgz" | awk '{print $1}')"
+            python3 .github/scripts/bump_nvopen.py "$nv" "$nvsum" srcpkgs/linux-cachyos/template srcpkgs/linux-cachyos-v3/template
+          fi
       - name: Commit updates
         run: |
           git config user.name  "github-actions[bot]"
