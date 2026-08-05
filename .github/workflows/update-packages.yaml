@@ -134,6 +134,28 @@ jobs:
             grep -Eq '^checksum=[0-9a-f]{64}$' "$t" || { echo "$p: bad checksum line"; exit 1; }
           done
 
+      - name: Update MOC stable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          template="srcpkgs/moc/template"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          current="$(sed -n 's/^version=//p' "$template" | head -n1)"
+          page="$(curl --retry 4 --retry-all-errors --connect-timeout 30 -fsSL https://moc.daper.net/download)"
+          latest="$(grep -oE 'moc-[0-9]+\.[0-9]+\.[0-9]+\.tar\.(bz2|gz|xz)' <<<"$page" | sed -E -e 's/^moc-//' -e 's/\.tar\.(bz2|gz|xz)$//' | sort -V | tail -n1)"
+          [[ -n "$latest" ]] || { echo "::error::Could not determine latest stable MOC version"; exit 1; }
+          echo "MOC: current=$current latest=$latest"
+          [[ "$latest" != "$current" ]] || { echo "MOC is current."; exit 0; }
+          archive_url="http://ftp.daper.net/pub/soft/moc/stable/moc-${latest}.tar.bz2"
+          curl --retry 4 --retry-all-errors --connect-timeout 30 -fL "$archive_url" -o "$tmp/moc.tar.bz2"
+          checksum="$(sha256sum "$tmp/moc.tar.bz2" | awk '{print $1}')"
+          [[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid MOC checksum"; exit 1; }
+          sed -i -e "s/^version=.*/version=${latest}/" -e 's/^revision=.*/revision=1/' -e "s/^checksum=.*/checksum=${checksum}/" "$template"
+          grep -Eq "^version=${latest}$" "$template"
+          grep -Eq '^checksum=[0-9a-f]{64}$' "$template"
+          git diff -- "$template"
+
       - name: Commit updates
         id: commit
         shell: bash
@@ -151,9 +173,3 @@ jobs:
           git push origin HEAD:main
           echo 'changed=true' >> "$GITHUB_OUTPUT"
 
-      - name: Start package build
-        if: steps.commit.outputs.changed == 'true'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run build.yaml --repo "$GITHUB_REPOSITORY" --ref main
