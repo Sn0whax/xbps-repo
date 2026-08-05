@@ -3,16 +3,15 @@ pkgname=moc
 version=2.6alpha3
 revision=1
 build_style=gnu-configure
-configure_args="--without-rcc"
 hostmakedepends="automake libtool pkg-config"
 makedepends="db-devel ncurses-devel libcurl-devel popt-devel ffmpeg-devel jack-devel alsa-lib-devel libltdl-devel libflac-devel libvorbis-devel libmad-devel libmpcdec-devel libmodplug-devel libid3tag-devel faad2-devel taglib-devel libsndfile-devel wavpack-devel speex-devel libsamplerate-devel sndio-devel"
 short_desc="Console-based audio player"
-maintainer="Sn0whax <your-email@example.com>"
+maintainer="Sn0whax <YOUR-EMAIL>"
 license="GPL-2.0-or-later"
 homepage="https://moc.daper.net/"
-_commit=3dadefece49692300dafb339f0246f23a4e4b9e0
-distfiles="https://gitlab.com/tomaszg/mocp/-/archive/${_commit}/mocp-${_commit}.tar.gz"
-checksum=49221388274dde5aa1809a2e3a5bd045dace613d827ed5b2ea4a1a8d37a339cc
+_upstream_version=2.6-alpha3
+distfiles="http://ftp.daper.net/pub/soft/moc/unstable/moc-${_upstream_version}.tar.xz"
+checksum=a27b8888984cf8dbcd758584961529ddf48c237caa9b40b67423fbfbb88323b1
 
 pre_configure() {
 autoreconf -fi
