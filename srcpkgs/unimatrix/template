@@ -1,0 +1,16 @@
+# Template file for 'unimatrix'
+pkgname=unimatrix
+version=0.1.0+git20260520
+revision=1
+depends="python3"
+short_desc="Matrix-style terminal display written in Python"
+maintainer="Sn0whax <YOUR-EMAIL>"
+license="GPL-3.0-or-later"
+homepage="https://github.com/will8211/unimatrix"
+_commit=dff519f972103f91384f360f270614184de8aa92
+distfiles="https://github.com/will8211/unimatrix/archive/${_commit}.tar.gz"
+checksum=ebe7ed201eed651ebea2a1608245b7e2cb2089f8ee152f7059d8ff9d01044e24
+
+do_install() {
+vbin unimatrix.py unimatrix
+}

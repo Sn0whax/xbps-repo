@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            changed="ananicy-cpp brave-origin cachyos-settings-runit discord faugus-launcher helium-browser heroic-games-launcher moc nlohmann-json spotify tutanota-desktop linux-cachyos linux-cachyos-v3 nvidia"
+            changed="ananicy-cpp brave-origin cachyos-settings-runit discord faugus-launcher helium-browser heroic-games-launcher moc nlohmann-json spotify unimatrix tutanota-desktop linux-cachyos linux-cachyos-v3 nvidia"
           else
             changed="$(git diff --name-only HEAD^ HEAD -- srcpkgs/ | cut -d/ -f2 | sort -u | tr '\n' ' ')"
           fi
@@ -72,7 +72,7 @@ jobs:
           - name: nvidia
             packages: "nvidia"
           - name: apps
-            packages: "ananicy-cpp brave-origin cachyos-settings-runit discord faugus-launcher helium-browser heroic-games-launcher moc nlohmann-json spotify tutanota-desktop"
+            packages: "ananicy-cpp brave-origin cachyos-settings-runit discord faugus-launcher helium-browser heroic-games-launcher moc nlohmann-json spotify unimatrix tutanota-desktop"
     container:
       image: ghcr.io/void-linux/void-glibc-full:latest
       options: --platform linux/amd64 --privileged

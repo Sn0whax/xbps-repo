@@ -158,6 +158,35 @@ jobs:
           grep -Eq '^checksum=[0-9a-f]{64}$' "$template"
           git diff -- "$template"
 
+      - name: Update UniMatrix
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          template="srcpkgs/unimatrix/template"
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          api="https://api.github.com/repos/will8211/unimatrix/commits/master"
+          json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$api")"
+          latest="$(jq -er '.sha' <<<"$json")"
+          commit_date="$(jq -er '.commit.committer.date[0:10] | gsub("-"; "")' <<<"$json")"
+          current="$(sed -n 's/^_commit=//p' "$template")"
+          echo "UniMatrix: current=$current latest=$latest"
+          [[ "$latest" != "$current" ]] || { echo "UniMatrix is current."; exit 0; }
+          url="https://github.com/will8211/unimatrix/archive/${latest}.tar.gz"
+          curl --retry 4 --retry-all-errors --connect-timeout 30 -fL "$url" -o "$tmp/unimatrix.tar.gz"
+          checksum="$(sha256sum "$tmp/unimatrix.tar.gz" | awk '{print $1}')"
+          [[ "$latest" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid UniMatrix commit"; exit 1; }
+          [[ "$commit_date" =~ ^[0-9]{8}$ ]] || { echo "::error::Invalid UniMatrix commit date"; exit 1; }
+          [[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid UniMatrix checksum"; exit 1; }
+          version="0.1.0+git${commit_date}"
+          sed -i -e "s/^version=.*/version=${version}/" -e 's/^revision=.*/revision=1/' -e "s/^_commit=.*/_commit=${latest}/" -e "s/^checksum=.*/checksum=${checksum}/" "$template"
+          grep -Eq '^version=0\.1\.0\+git[0-9]{8}$' "$template"
+          grep -Eq '^_commit=[0-9a-f]{40}$' "$template"
+          grep -Eq '^checksum=[0-9a-f]{64}$' "$template"
+          git diff -- "$template"
+
       - name: Commit updates
         id: commit
         shell: bash
