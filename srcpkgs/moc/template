@@ -1,17 +1,19 @@
 # Template file for 'moc'
 pkgname=moc
-version=2.5.2
+version=2.6alpha3
 revision=1
 build_style=gnu-configure
-hostmakedepends="pkg-config"
+configure_args="--without-rcc"
+hostmakedepends="automake libtool pkg-config"
 makedepends="db-devel ncurses-devel libcurl-devel popt-devel ffmpeg-devel jack-devel alsa-lib-devel libltdl-devel libflac-devel libvorbis-devel libmad-devel libmpcdec-devel libmodplug-devel libid3tag-devel faad2-devel taglib-devel libsndfile-devel wavpack-devel speex-devel libsamplerate-devel sndio-devel"
 short_desc="Console-based audio player"
-maintainer="Sn0whax <YOUR-EMAIL>"
+maintainer="Sn0whax <your-email@example.com>"
 license="GPL-2.0-or-later"
 homepage="https://moc.daper.net/"
-distfiles="http://ftp.daper.net/pub/soft/moc/stable/moc-${version}.tar.bz2"
-checksum=f3a68115602a4788b7cfa9bbe9397a9d5e24c68cb61a57695d1c2c3ecf49db08
+_commit=3dadefece49692300dafb339f0246f23a4e4b9e0
+distfiles="https://gitlab.com/tomaszg/mocp/-/archive/${_commit}/mocp-${_commit}.tar.gz"
+checksum=49221388274dde5aa1809a2e3a5bd045dace613d827ed5b2ea4a1a8d37a339cc
 
 pre_configure() {
-	sed -i -e "s|^ac_cpp='\$CPP |&-P |g" configure
+autoreconf -fi
 }
