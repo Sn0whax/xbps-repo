@@ -21,7 +21,7 @@ Unofficial third-party [XBPS](https://docs.voidlinux.org/xbps/index.html) reposi
 - `nlohmann-json` — header-only JSON lib (build dep of `ananicy-cpp`)
 
 **Applications** (repackaged upstream binaries)
-- `brave-origin`, `discord`, `faugus-launcher`, `helium-browser`, `heroic-games-launcher`, `spotify`, `tutanota-desktop`
+- `brave-origin`, `discord`, `faugus-launcher`, `helium-browser`, `heroic-games-launcher`, `spotify`, `tutanota-desktop`, `unimatrix`. `mocp`
 
 > Kernels, the NVIDIA driver, `ananicy-cpp`, and `nlohmann-json` are compiled from source by CI. `cachyos-settings-runit` is config-only. The rest repackage upstream binaries. See each `srcpkgs/*/template` for source URLs, checksums, and dependencies.
 
