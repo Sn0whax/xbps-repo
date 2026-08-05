@@ -1,8 +1,9 @@
 # Template file for 'moc'
 pkgname=moc
 version=2.6alpha3
-revision=4
+revision=5
 build_style=gnu-configure
+configure_args="--disable-debug --without-rcc"
 CFLAGS+=" -DCODEC_CAP_EXPERIMENTAL=AV_CODEC_CAP_EXPERIMENTAL -DCODEC_CAP_TRUNCATED=AV_CODEC_CAP_TRUNCATED -DCODEC_FLAG_TRUNCATED=AV_CODEC_FLAG_TRUNCATED -DCODEC_CAP_DELAY=AV_CODEC_CAP_DELAY"
 hostmakedepends="gettext-devel automake libtool pkg-config"
 makedepends="db-devel ncurses-devel libcurl-devel popt-devel ffmpeg-devel jack-devel alsa-lib-devel libltdl-devel libflac-devel libvorbis-devel libmad-devel libmpcdec-devel libmodplug-devel libid3tag-devel faad2-devel taglib-devel libsndfile-devel wavpack-devel speex-devel libsamplerate-devel sndio-devel"
