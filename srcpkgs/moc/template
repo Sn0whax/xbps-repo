@@ -1,9 +1,9 @@
 # Template file for 'moc'
 pkgname=moc
 version=2.6alpha3
-revision=1
+revision=2
 build_style=gnu-configure
-hostmakedepends="automake libtool pkg-config"
+hostmakedepends="gettext-devel automake libtool pkg-config"
 makedepends="db-devel ncurses-devel libcurl-devel popt-devel ffmpeg-devel jack-devel alsa-lib-devel libltdl-devel libflac-devel libvorbis-devel libmad-devel libmpcdec-devel libmodplug-devel libid3tag-devel faad2-devel taglib-devel libsndfile-devel wavpack-devel speex-devel libsamplerate-devel sndio-devel"
 short_desc="Console-based audio player"
 maintainer="Sn0whax <YOUR-EMAIL>"
