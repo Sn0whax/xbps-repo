@@ -22,7 +22,7 @@ jobs:
             local url; url="$( eval "$(grep -E '^(version|revision|_[A-Za-z0-9_]+)=' "$t" | sed "s/^version=.*/version=$v/")"; u="$(sed -n 's/^distfiles=//p' "$t" | head -1 | tr -d '\"')"; eval "u=\"$u\""; printf '%s' "$u" )"
             curl --retry 4 --retry-all-errors -fL "$url" -o "$tmp/$pkg.src" || { echo "$pkg: fetch failed ($url) — skip"; return 0; }
             local sum; sum="$(sha256sum "$tmp/$pkg.src" | awk '{print $1}')"
-            sed -i -e "s/^version=.*/version=$v/" -e 's/^revision=.*/revision=1/' -e "s/^checksum=.*/checksum=$sum/" "$t"
+            sed -i -e "s/^version=.*/version=$v/" -e 's/^revision=.*/revision=1/' -e "s/^checksum=.*/checksum=\"$sum/" "$t"
             echo "$pkg: $cur -> $v  (sum $sum)"
           }
           kv="$(
