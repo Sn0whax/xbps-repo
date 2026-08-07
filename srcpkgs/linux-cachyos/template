@@ -42,7 +42,7 @@ export KBUILD_BUILD_USER=voidlinux
 export KBUILD_BUILD_HOST=voidlinux
 
 do_configure() {
-	cd "${wrksrc}/${_srcname}"
+	cd "${wrksrc}/linux-${_srcname}"
 	# customized config
 	cp "${FILESDIR}/config" .config
 	scripts/config -e CACHY -e SCHED_BORE -e LTO_CLANG_THIN -d LTO_NONE -d LTO_CLANG_FULL
@@ -50,7 +50,7 @@ do_configure() {
 }
 
 do_build() {
-	cd "${wrksrc}/${_srcname}"
+	cd "${wrksrc}/linux-${_srcname}"
 	export RUSTC_BOOTSTRAP=1
 	make LLVM=1 ${makejobs} 2>&1 | tee "${XBPS_SRCDISTDIR}/build-${pkgname}-${version}.log"
 
@@ -60,13 +60,13 @@ do_build() {
 	local _nvsrc="${wrksrc}/open-gpu-kernel-modules-${_nvver}"
 	msg_normal "Building NVIDIA open modules (${_nvver}) against in-tree kernel...\n"
 	CFLAGS= CXXFLAGS= LDFLAGS= make -C "${_nvsrc}" modules \
-		SYSSRC="${wrksrc}/${_srcname}" SYSOUT="${wrksrc}/${_srcname}" \
+		SYSSRC="${wrksrc}/linux-${_srcname}" SYSOUT="${wrksrc}/linux-${_srcname}" \
 		IGNORE_CC_MISMATCH=yes IGNORE_PREEMPT_RT_PRESENCE=1 \
 		CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 ${makejobs}
 }
 
 do_install() {
-	cd "${wrksrc}/${_srcname}"
+	cd "${wrksrc}/linux-${_srcname}"
 	local _kernver
 	_kernver="$(make -s kernelrelease)"
 
