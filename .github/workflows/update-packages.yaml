@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          token: ${{ secrets.CI_PAT }}
 
       - name: Update all templates
         id: update
