@@ -9,48 +9,127 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
       - name: Detect & bump heavy packages
         run: |
           set -u
           tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-          bump() {                       # $1=pkg  $2=newversion
-            local pkg="$1" v="$2" t="srcpkgs/$1/template"
-            [ -n "$v" ] || { echo "$pkg: no version detected — skip"; return 0; }
-            local cur; cur="$(sed -n 's/^version=//p' "$t")"
-            [ "$v" = "$cur" ] && { echo "$pkg: up-to-date ($cur)"; return 0; }
-            local url; url="$( eval "$(grep -E '^(version|revision|_[A-Za-z0-9_]+)=' "$t" | sed "s/^version=.*/version=$v/")"; u="$(sed -n 's/^distfiles=//p' "$t" | head -1 | tr -d '\"')"; eval "u=\"$u\""; printf '%s' "$u" )"
-            curl --retry 4 --retry-all-errors -fL "$url" -o "$tmp/$pkg.src" || { echo "$pkg: fetch failed ($url) — skip"; return 0; }
-            local sum; sum="$(sha256sum "$tmp/$pkg.src" | awk '{print $1}')"
-            sed -i -e "s/^version=.*/version=$v/" -e 's/^revision=.*/revision=1/' -e "s/^checksum=.*/checksum=\"$sum/" "$t"
-            echo "$pkg: $cur -> $v  (sum $sum)"
-          }
-          kv="$(
-            git ls-remote --tags --refs https://github.com/CachyOS/linux |
-              grep -oP 'refs/tags/cachyos-\K[0-9]+(?:\.[0-9]+)+(?=-[0-9]+$)' |
-              sort -Vu |
-              tail -n 1
-          )"
+          changed=0                      # tracks whether anything actually moved
 
-          if [ -z "$kv" ]; then
-            echo "::error::Could not detect the latest stable CachyOS kernel"
+          # bump <pkg> <version> [revision]
+          #   - version : new upstream version string
+          #   - revision: optional; defaults to 1. Pass CachyOS pkgrel here so
+          #               same-version rebuilds (e.g. -2 NVIDIA rebuilds) trigger.
+          bump() {
+            local pkg="$1" v="$2" rev="${3:-1}" t="srcpkgs/$1/template"
+            [ -n "$v" ] || { echo "$pkg: no version detected — skip"; return 0; }
+            [ -f "$t" ] || { echo "$pkg: template missing ($t) — skip"; return 0; }
+
+            local cur_v cur_r
+            cur_v="$(sed -n 's/^version=//p' "$t")"
+            cur_r="$(sed -n 's/^revision=//p' "$t")"
+
+            # Compare the FULL version-revision, not just version, so a
+            # same-version pkgrel bump is not silently treated as up-to-date.
+            if [ "$v" = "$cur_v" ] && [ "$rev" = "$cur_r" ]; then
+              echo "$pkg: up-to-date ($cur_v-$cur_r)"
+              return 0
+            fi
+
+            # Expand the template's distfiles URL against the NEW version so we
+            # fetch the correct tarball to checksum.
+            local url u
+            url="$(
+              eval "$(grep -E '^(version|revision|_[A-Za-z0-9_]+)=' "$t" \
+                      | sed "s/^version=.*/version=$v/")"
+              u="$(sed -n 's/^distfiles=//p' "$t" | head -1 | tr -d '\"')"
+              eval "u=\"$u\""
+              printf '%s' "$u"
+            )"
+
+            if ! curl --retry 4 --retry-all-errors -fL "$url" -o "$tmp/$pkg.src"; then
+              echo "$pkg: fetch failed ($url) — skip"
+              return 0
+            fi
+
+            local sum; sum="$(sha256sum "$tmp/$pkg.src" | awk '{print $1}')"
+            sed -i \
+              -e "s/^version=.*/version=$v/" \
+              -e "s/^revision=.*/revision=$rev/" \
+              -e "s/^checksum=.*/checksum=\"$sum\"/" \
+              "$t"
+
+            echo "$pkg: BUMPED $cur_v-$cur_r -> $v-$rev  (sum $sum)"
+            changed=1
+          }
+
+          # ---- CachyOS kernel: track full <ver>-<rel> from the SOURCE tags ----
+          # NOTE: this watches CachyOS/linux (source tree). It can run AHEAD of
+          # the linux-cachyos PACKAGE repo. The guard below holds until the
+          # package PKGBUILD agrees, so we never bump onto an unpackaged version.
+          ktag="$(
+            git ls-remote --tags --refs https://github.com/CachyOS/linux \
+              | grep -oP 'refs/tags/cachyos-\K[0-9]+(?:\.[0-9]+)+-[0-9]+$' \
+              | sort -Vu | tail -n1
+          )"
+          if [ -z "$ktag" ]; then
+            echo "::error::Could not detect the latest CachyOS kernel tag"
             exit 1
           fi
+          kver="${ktag%-*}"; krel="${ktag##*-}"
+          echo "Latest CachyOS kernel SOURCE tag: $kver-$krel"
 
-          echo "Latest stable CachyOS kernel detected: $kv"
-          bump linux-cachyos "$kv"
-          bump linux-cachyos-v3 "$kv"
-          jv="$(git ls-remote --tags --refs https://github.com/nlohmann/json | grep -oP 'refs/tags/v\K[0-9.]+' | sort -V | tail -1)"
-          bump nlohmann-json "$jv"
-          nv="$(curl -fsSL 'https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500' | grep -oP 'Current production branch release: \K[0-9.]+(?= \(x86)' | head -1)"
-          bump nvidia "$nv"
-          # keep the open kernel module (kernel subpackage) in lockstep with the driver
-          if [ -n "$nv" ] && curl -fsSL -o "$tmp/nvopen.tgz" "https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${nv}.tar.gz"; then
-            nvsum="$(sha256sum "$tmp/nvopen.tgz" | awk '{print $1}')"
-            python3 .github/scripts/bump_nvopen.py "$nv" "$nvsum" srcpkgs/linux-cachyos/template srcpkgs/linux-cachyos-v3/template
+          # Cross-check against the PACKAGE repo (linux-cachyos PKGBUILD).
+          pkg_pkgver="$(curl -fsSL https://raw.githubusercontent.com/CachyOS/linux-cachyos/master/linux-cachyos/PKGBUILD | sed -n 's/^pkgver=//p' | head -1 || true)"
+          echo "linux-cachyos PACKAGE pkgver: ${pkg_pkgver:-<unknown>}"
+
+          if [ -n "$pkg_pkgver" ] && [ "$pkg_pkgver" != "$kver" ]; then
+            echo "::warning::Source ($kver) is ahead of package ($pkg_pkgver) — holding kernel bump until packaging catches up"
+          else
+            bump linux-cachyos    "$kver" "$krel"
+            bump linux-cachyos-v3 "$kver" "$krel"
           fi
+
+          # ---- nlohmann-json ----
+          jv="$(git ls-remote --tags --refs https://github.com/nlohmann/json \
+                | grep -oP 'refs/tags/v\K[0-9.]+' | sort -V | tail -1)"
+          bump nlohmann-json "$jv"
+
+          # ---- NVIDIA production driver ----
+          nv="$(curl -fsSL 'https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500' \
+                | grep -oP 'Current production branch release: \K[0-9.]+(?= \(x86)' | head -1)"
+          bump nvidia "$nv"
+
+          # keep the open kernel module (kernel subpackage) in lockstep w/ driver
+          if [ -n "$nv" ] && curl -fsSL -o "$tmp/nvopen.tgz" \
+               "https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${nv}.tar.gz"; then
+            nvsum="$(sha256sum "$tmp/nvopen.tgz" | awk '{print $1}')"
+            if python3 .github/scripts/bump_nvopen.py "$nv" "$nvsum" \
+                 srcpkgs/linux-cachyos/template srcpkgs/linux-cachyos-v3/template; then
+              echo "nvidia-open module: synced to $nv"
+              changed=1
+            fi
+          fi
+
+          # Expose an honest summary + a flag for downstream steps.
+          if [ "$changed" -eq 1 ]; then
+            echo "RESULT: templates changed — a build should follow"
+          else
+            echo "RESULT: nothing changed — no build needed"
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+        id: bump
+
       - name: Commit updates
+        if: steps.bump.outputs.changed == '1'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git diff --quiet || { git commit -am "auto: bump kernel/heavy packages"; git push; }
+          if git diff --quiet; then
+            echo "No file changes to commit (checksums identical)."
+          else
+            git commit -am "auto: bump kernel/heavy packages"
+            git push
+            echo "Committed and pushed template bumps."
+          fi
