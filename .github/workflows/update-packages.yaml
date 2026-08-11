@@ -1,5 +1,21 @@
 name: Update Package Templates
 
+# =============================================================================
+#  HOW TO ADD A NEW APP  (this is the only thing you need to do)
+# -----------------------------------------------------------------------------
+#  1. Copy one of the app_* blocks in the "APP DEFINITIONS" section below.
+#  2. Rename it app_<something>  (use underscores; hyphens aren't valid in
+#     bash function names — the real hyphenated pkgname goes in the sync call).
+#  3. Detect the newest <version> and (if needed) the download <url>, then call
+#     one of the helpers:
+#        sync <pkgname> <version> <url>        # direct download URL
+#        sync_distfiles <pkgname> <version>    # URL derived from template distfiles
+#     ...or write fields yourself with set_ver / set_field for odd layouts.
+#  4. Return non-zero on any detection failure (|| return 1). That app is then
+#     reported as failed WITHOUT blocking the other apps or the commit.
+#  That's it — the runner auto-discovers every app_* function. No list to edit.
+# =============================================================================
+
 on:
   workflow_dispatch:
   schedule:
@@ -17,189 +33,279 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Update all templates
+        id: update
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
+          # NOTE: intentionally NO `set -e`. We want every app to be attempted
+          # even if an earlier one fails, so we never miss an available update.
+          set -uo pipefail
+          tmpdir="$(mktemp -d)"; trap 'rm -rf "$tmpdir"' EXIT
 
-          update_template() {
-            local template="$1" version="$2" checksum="$3"
-            sed -i \
-              -e "s/^version=.*/version=${version}/" \
-              -e 's/^revision=.*/revision=1/' \
-              -e "s/^checksum=.*/checksum=${checksum}/" \
-              "$template"
+          # ---------------------------------------------------------------------
+          #  GENERIC HELPERS  (you shouldn't need to touch these)
+          # ---------------------------------------------------------------------
+
+          # gh <url> : GitHub API GET with auth + json accept header
+          gh() { curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+                      -H 'Accept: application/vnd.github+json' "$1"; }
+
+          # fetch_sum <url> <outfile> : download then print sha256
+          fetch_sum() {
+            curl --retry 4 --retry-all-errors --connect-timeout 30 -fL "$1" -o "$2" || return 1
+            sha256sum "$2" | awk '{print $1}'
           }
 
-          download_sum() {
-            local url="$1" file="$2"
-            curl --retry 4 --retry-all-errors -fL "$url" -o "$file"
-            sha256sum "$file" | awk '{print $1}'
+          # set_ver <template> <version>  : set version + reset revision to 1
+          set_ver() { sed -i -e "s/^version=.*/version=$2/" \
+                             -e 's/^revision=.*/revision=1/' "$1"; }
+
+          # set_field <template> <field> <value>  : replace a single template field
+          set_field() { sed -i -e "s|^$2=.*|$2=$3|" "$1"; }
+
+          # sync <pkg> <version> <url>
+          #   Idempotent: skips if version already current. Downloads, checksums,
+          #   writes version/revision/checksum. Use for direct download URLs.
+          sync() {
+            local pkg="$1" ver="$2" url="$3" t="srcpkgs/$1/template" sum cur
+            [ -n "$ver" ] || { echo "  $pkg: no version detected — skip"; return 1; }
+            [ -f "$t" ]   || { echo "  $pkg: template missing — skip";    return 1; }
+            cur="$(sed -n 's/^version=//p' "$t")"
+            [ "$ver" = "$cur" ] && { echo "  $pkg: up-to-date ($cur)"; return 0; }
+            sum="$(fetch_sum "$url" "$tmpdir/$pkg.src")" || { echo "  $pkg: fetch failed"; return 1; }
+            set_ver "$t" "$ver"
+            set_field "$t" checksum "\"$sum\""
+            echo "  $pkg: $cur -> $ver"
           }
 
-          # Brave Origin: newest non-prerelease release containing the exact Origin ZIP.
-          brave_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/brave/brave-browser/releases?per_page=100')"
-          brave_row="$(jq -r '[.[] | select(.draft == false and .prerelease == false) | .tag_name as $tag | ($tag | sub("^v"; "")) as $v | .assets[] | select(.name == ("brave-origin-" + $v + "-linux-amd64.zip")) | [$v, .browser_download_url]] | first | @tsv' <<<"$brave_json")"
-          IFS=$'\t' read -r brave_version brave_url <<<"$brave_row"
-          [[ -n "$brave_version" && -n "$brave_url" ]]
-          brave_sum="$(download_sum "$brave_url" "$tmp/brave.zip")"
-          update_template srcpkgs/brave-origin/template "$brave_version" "$brave_sum"
+          # sync_distfiles <pkg> <version>
+          #   Like sync, but derives the URL by expanding the template's own
+          #   distfiles against the NEW version (for templates with custom URLs).
+          sync_distfiles() {
+            local pkg="$1" ver="$2" t="srcpkgs/$1/template" url u sum cur
+            [ -n "$ver" ] || { echo "  $pkg: no version detected — skip"; return 1; }
+            [ -f "$t" ]   || { echo "  $pkg: template missing — skip";    return 1; }
+            cur="$(sed -n 's/^version=//p' "$t")"
+            [ "$ver" = "$cur" ] && { echo "  $pkg: up-to-date ($cur)"; return 0; }
+            url="$(
+              eval "$(grep -E '^(version|revision|_[A-Za-z0-9_]+)=' "$t" \
+                      | sed "s/^version=.*/version=$ver/")"
+              u="$(sed -n 's/^distfiles=//p' "$t" | head -1 | tr -d '\"')"
+              eval "u=\"$u\""; printf '%s' "$u"
+            )"
+            sum="$(fetch_sum "$url" "$tmpdir/$pkg.src")" || { echo "  $pkg: fetch failed"; return 1; }
+            set_ver "$t" "$ver"
+            set_field "$t" checksum "\"$sum\""
+            echo "  $pkg: $cur -> $ver"
+          }
 
-          # Discord stable Linux release.
-          discord_version="$(curl -fsSL 'https://discordapp.com/api/updates/stable?platform=linux' | jq -er '.name')"
-          discord_url="https://dl.discordapp.net/apps/linux/${discord_version}/discord-${discord_version}.tar.gz"
-          discord_sum="$(download_sum "$discord_url" "$tmp/discord.tar.gz")"
-          update_template srcpkgs/discord/template "$discord_version" "$discord_sum"
+          # =====================================================================
+          #  APP DEFINITIONS  — one self-contained block per app.
+          #  Copy a block to add a new app; the runner picks it up automatically.
+          # =====================================================================
 
-          # Helium Linux: latest release with the expected x86_64 archive.
-          helium_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/imputnet/helium-linux/releases?per_page=20')"
-          helium_row="$(jq -r '[.[] | select(.draft == false and .prerelease == false) | (.tag_name | sub("^v"; "")) as $v | .assets[] | select(.name == ("helium-" + $v + "-x86_64_linux.tar.xz")) | [$v, .browser_download_url]] | first | @tsv' <<<"$helium_json")"
-          IFS=$'\t' read -r helium_version helium_url <<<"$helium_row"
-          [[ -n "$helium_version" && -n "$helium_url" ]]
-          helium_sum="$(download_sum "$helium_url" "$tmp/helium.tar.xz")"
-          update_template srcpkgs/helium-browser/template "$helium_version" "$helium_sum"
+          # --- Brave Origin -----------------------------------------------------
+          # Newest non-prerelease release that ships the exact Origin amd64 zip.
+          app_brave_origin() {
+            local json row v url
+            json="$(gh 'https://api.github.com/repos/brave/brave-browser/releases?per_page=100')" || return 1
+            row="$(jq -r '[.[]|select(.draft==false and .prerelease==false)|.tag_name as $t|($t|sub("^v";"")) as $v|.assets[]|select(.name==("brave-origin-"+$v+"-linux-amd64.zip"))|[$v,.browser_download_url]]|first|@tsv' <<<"$json")"
+            IFS=$'\t' read -r v url <<<"$row"
+            [[ -n "$v" && -n "$url" ]] || return 1
+            sync brave-origin "$v" "$url"
+          }
 
-          # Heroic stable tag archive.
-          heroic_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/Heroic-Games-Launcher/HeroicGamesLauncher/releases/latest')"
-          heroic_version="$(jq -er '.tag_name | sub("^v"; "")' <<<"$heroic_json")"
-          heroic_url="https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/archive/refs/tags/v${heroic_version}.tar.gz"
-          heroic_sum="$(download_sum "$heroic_url" "$tmp/heroic.tar.gz")"
-          update_template srcpkgs/heroic-games-launcher/template "$heroic_version" "$heroic_sum"
+          # --- Discord ----------------------------------------------------------
+          # Stable Linux tarball; version comes from the update API.
+          app_discord() {
+            local v url
+            v="$(curl -fsSL 'https://discordapp.com/api/updates/stable?platform=linux' | jq -er '.name')" || return 1
+            url="https://dl.discordapp.net/apps/linux/${v}/discord-${v}.tar.gz"
+            sync discord "$v" "$url"
+          }
 
-          # Spotify stable amd64 package index; split full version into version and _subver.
-          spotify_base="https:"'//'"repository.spotify.com"
-          spotify_stanza="$(curl -fsSL "${spotify_base}/dists/stable/non-free/binary-amd64/Packages.gz" | gzip -dc | sed -n '/^Package: spotify-client$/,/^$/p')"
-          spotify_full="$(printf '%s\n' "$spotify_stanza" | awk '/^Version: /{sub(/^Version: /, ""); sub(/^1:/, ""); print; exit}')"
-          spotify_file="$(printf '%s\n' "$spotify_stanza" | awk '/^Filename: /{sub(/^Filename: /, ""); print; exit}')"
-          spotify_sum="$(printf '%s\n' "$spotify_stanza" | awk '/^SHA256: /{print $2; exit}')"
-          spotify_version="$(printf '%s\n' "$spotify_full" | cut -d. -f1-3)"
-          spotify_subver="${spotify_full#${spotify_version}.}"
-          [[ -n "$spotify_version" && -n "$spotify_subver" && -n "$spotify_file" && "$spotify_sum" =~ ^[0-9a-f]{64}$ ]]
-          curl --retry 4 --retry-all-errors -fL "${spotify_base}/${spotify_file}" -o "$tmp/spotify.deb"
-          [[ "$(sha256sum "$tmp/spotify.deb" | awk '{print $1}')" == "$spotify_sum" ]]
-          sed -i \
-            -e "s/^version=.*/version=${spotify_version}/" \
-            -e 's/^revision=.*/revision=1/' \
-            -e "s/^_subver=.*/_subver=${spotify_subver}/" \
-            -e "s/^checksum=.*/checksum=${spotify_sum}/" \
-            srcpkgs/spotify/template
+          # --- Helium (browser) -------------------------------------------------
+          # Latest non-prerelease release with the x86_64 linux tarball.
+          app_helium_browser() {
+            local json row v url
+            json="$(gh 'https://api.github.com/repos/imputnet/helium-linux/releases?per_page=20')" || return 1
+            row="$(jq -r '[.[]|select(.draft==false and .prerelease==false)|(.tag_name|sub("^v";"")) as $v|.assets[]|select(.name==("helium-"+$v+"-x86_64_linux.tar.xz"))|[$v,.browser_download_url]]|first|@tsv' <<<"$json")"
+            IFS=$'\t' read -r v url <<<"$row"
+            [[ -n "$v" && -n "$url" ]] || return 1
+            sync helium-browser "$v" "$url"
+          }
 
-          # Tutanota: newest desktop release containing the unpacked Linux archive.
-          tuta_api="https://api.github.com/repos/tutao/tutanota/releases?per_page=100"
-          tuta_json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$tuta_api")"
-          tuta_row="$(jq -r '[.[] | select(.draft == false and (.tag_name | startswith("tutanota-desktop-release-"))) | (.tag_name | sub("^tutanota-desktop-release-"; "")) as $v | .assets[] | select(.name == ("tutanota-desktop-" + $v + "-unpacked-linux.tar.gz")) | [$v, .browser_download_url]] | first | @tsv' <<<"$tuta_json")"
-          IFS=$'\t' read -r tuta_version tuta_url <<<"$tuta_row"
-          [[ -n "$tuta_version" && -n "$tuta_url" ]]
-          tuta_sum="$(download_sum "$tuta_url" "$tmp/tutanota.tar.gz")"
-          update_template srcpkgs/tutanota-desktop/template "$tuta_version" "$tuta_sum"
+          # --- Heroic Games Launcher -------------------------------------------
+          # Latest stable tag; source archive from the tag.
+          app_heroic_games_launcher() {
+            local json v url
+            json="$(gh 'https://api.github.com/repos/Heroic-Games-Launcher/HeroicGamesLauncher/releases/latest')" || return 1
+            v="$(jq -er '.tag_name|sub("^v";"")' <<<"$json")" || return 1
+            url="https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/archive/refs/tags/v${v}.tar.gz"
+            sync heroic-games-launcher "$v" "$url"
+          }
 
-          git diff --check
-          for p in brave-origin discord helium-browser heroic-games-launcher spotify tutanota-desktop; do
-            t="srcpkgs/$p/template"
-            grep -Eq '^version=.+$' "$t"
-            grep -Eq '^checksum=[0-9a-f]{64}$' "$t"
+          # --- Spotify ----------------------------------------------------------
+          # Debian package index; splits full version into version + _subver and
+          # verifies the downloaded .deb against the index SHA256 before writing.
+          app_spotify() {
+            local t="srcpkgs/spotify/template" base='https://repository.spotify.com'
+            local stanza full file sum ver sub cur
+            stanza="$(curl -fsSL "$base/dists/stable/non-free/binary-amd64/Packages.gz" | gzip -dc \
+                      | sed -n '/^Package: spotify-client$/,/^$/p')" || return 1
+            full="$(awk '/^Version: /{sub(/^Version: /,"");sub(/^1:/,"");print;exit}' <<<"$stanza")"
+            file="$(awk '/^Filename: /{sub(/^Filename: /,"");print;exit}' <<<"$stanza")"
+            sum="$(awk '/^SHA256: /{print $2;exit}' <<<"$stanza")"
+            ver="$(cut -d. -f1-3 <<<"$full")"; sub="${full#${ver}.}"
+            [[ -n "$ver" && -n "$sub" && -n "$file" && "$sum" =~ ^[0-9a-f]{64}$ ]] || return 1
+            cur="$(sed -n 's/^version=//p' "$t")"
+            [ "$ver" = "$cur" ] && { echo "  spotify: up-to-date ($cur)"; return 0; }
+            curl --retry 4 --retry-all-errors -fL "$base/$file" -o "$tmpdir/spotify.deb" || return 1
+            [[ "$(sha256sum "$tmpdir/spotify.deb" | awk '{print $1}')" == "$sum" ]] \
+              || { echo "::error::spotify checksum mismatch"; return 1; }
+            set_ver     "$t" "$ver"
+            set_field   "$t" _subver "$sub"
+            set_field   "$t" checksum "\"$sum\""
+            echo "  spotify: $cur -> $ver"
+          }
+
+          # --- Tutanota Desktop -------------------------------------------------
+          # Newest desktop release containing the unpacked linux archive.
+          app_tutanota_desktop() {
+            local json row v url
+            json="$(gh 'https://api.github.com/repos/tutao/tutanota/releases?per_page=100')" || return 1
+            row="$(jq -r '[.[]|select(.draft==false and (.tag_name|startswith("tutanota-desktop-release-")))|(.tag_name|sub("^tutanota-desktop-release-";"")) as $v|.assets[]|select(.name==("tutanota-desktop-"+$v+"-unpacked-linux.tar.gz"))|[$v,.browser_download_url]]|first|@tsv' <<<"$json")"
+            IFS=$'\t' read -r v url <<<"$row"
+            [[ -n "$v" && -n "$url" ]] || return 1
+            sync tutanota-desktop "$v" "$url"
+          }
+
+          # --- ananicy-cpp ------------------------------------------------------
+          # Newest vX.Y.Z tag from GitLab; URL from template distfiles.
+          app_ananicy_cpp() {
+            local v
+            v="$(git ls-remote --tags --refs https://gitlab.com/ananicy-cpp/ananicy-cpp \
+                 | grep -oP 'refs/tags/v\K[0-9.]+' | sort -V | tail -1)" || return 1
+            sync_distfiles ananicy-cpp "$v"
+          }
+
+          # --- faugus-launcher --------------------------------------------------
+          # Newest numeric tag from GitHub; URL from template distfiles.
+          app_faugus_launcher() {
+            local v
+            v="$(git ls-remote --tags --refs https://github.com/Faugus/faugus-launcher \
+                 | grep -oP 'refs/tags/\K[0-9][0-9.]+' | sort -V | tail -1)" || return 1
+            sync_distfiles faugus-launcher "$v"
+          }
+
+          # --- MOC (dev/alpha) --------------------------------------------------
+          # Scrapes the official download page; strips the illegal '-' from the
+          # xbps version (2.6-alpha3 -> 2.6alpha3) but keeps _upstream_version.
+          app_moc() {
+            local t="srcpkgs/moc/template" cur page latest url sum xver
+            cur="$(sed -n 's/^_upstream_version=//p' "$t")"
+            page="$(curl --retry 4 --retry-all-errors --connect-timeout 30 -fsSL https://moc.daper.net/download)" || return 1
+            latest="$(grep -oE 'moc-[0-9]+\.[0-9]+-alpha[0-9]+\.tar\.xz' <<<"$page" \
+                      | sed -E 's/^moc-//; s/\.tar\.xz$//' | sort -V | tail -n1)"
+            [ -n "$latest" ] || return 1
+            [ "$latest" = "$cur" ] && { echo "  moc: up-to-date ($cur)"; return 0; }
+            url="http://ftp.daper.net/pub/soft/moc/unstable/moc-${latest}.tar.xz"
+            sum="$(fetch_sum "$url" "$tmpdir/moc.tar.xz")" || return 1
+            xver="${latest/-alpha/alpha}"
+            set_ver     "$t" "$xver"
+            set_field   "$t" _upstream_version "$latest"
+            set_field   "$t" checksum "\"$sum\""
+            echo "  moc: $cur -> $latest"
+          }
+
+          # --- UniMatrix (git snapshot) ----------------------------------------
+          # Tracks master HEAD commit; version is 0.1.0+gitYYYYMMDD, _commit=<sha>.
+          app_unimatrix() {
+            local t="srcpkgs/unimatrix/template" json sha date cur url sum ver
+            json="$(gh https://api.github.com/repos/will8211/unimatrix/commits/master)" || return 1
+            sha="$(jq -er '.sha' <<<"$json")" || return 1
+            date="$(jq -er '.commit.committer.date[0:10]|gsub("-";"")' <<<"$json")" || return 1
+            cur="$(sed -n 's/^_commit=//p' "$t")"
+            [ "$sha" = "$cur" ] && { echo "  unimatrix: up-to-date"; return 0; }
+            [[ "$sha" =~ ^[0-9a-f]{40}$ && "$date" =~ ^[0-9]{8}$ ]] || return 1
+            url="https://github.com/will8211/unimatrix/archive/${sha}.tar.gz"
+            sum="$(fetch_sum "$url" "$tmpdir/unimatrix.tar.gz")" || return 1
+            ver="0.1.0+git${date}"
+            set_ver     "$t" "$ver"
+            set_field   "$t" _commit "$sha"
+            set_field   "$t" checksum "\"$sum\""
+            echo "  unimatrix: $cur -> $sha"
+          }
+
+          # =====================================================================
+          #  RUNNER  — auto-discovers and runs every app_* function above.
+          #  You do NOT need to edit anything below to add an app.
+          # =====================================================================
+          mapfile -t APPS < <(declare -F | awk '{print $3}' | grep '^app_' | sort)
+          echo "Discovered ${#APPS[@]} apps."
+          FAILED=()
+          for fn in "${APPS[@]}"; do
+            name="${fn#app_}"
+            echo "== $name =="
+            if ! "$fn"; then
+              echo "::warning::$name update failed"
+              FAILED+=("$name")
+            fi
           done
-          git diff -- srcpkgs/brave-origin srcpkgs/discord srcpkgs/helium-browser srcpkgs/heroic-games-launcher srcpkgs/spotify srcpkgs/tutanota-desktop
 
-      - name: Update ananicy-cpp and faugus-launcher
-        run: |
-          set -u
-          t2="$(mktemp -d)"; trap 'rm -rf "$t2"' EXIT
-          bump() {
-            local pkg="$1" v="$2" t="srcpkgs/$1/template"
-            [ -n "$v" ] || { echo "$pkg: no version — skip"; return 0; }
-            local cur; cur="$(sed -n 's/^version=//p' "$t")"
-            [ "$v" = "$cur" ] && { echo "$pkg: up-to-date ($cur)"; return 0; }
-            local url; url="$( eval "$(grep -E '^(version|revision|_[A-Za-z0-9_]+)=' "$t" | sed "s/^version=.*/version=$v/")"; u="$(sed -n 's/^distfiles=//p' "$t" | head -1 | tr -d '\"')"; eval "u=\"$u\""; printf '%s' "$u" )"
-            curl --retry 4 --retry-all-errors -fL "$url" -o "$t2/$pkg.src" || { echo "$pkg: fetch failed — skip"; return 0; }
-            local sum; sum="$(sha256sum "$t2/$pkg.src" | awk '{print $1}')"
-            sed -i -e "s/^version=.*/version=$v/" -e 's/^revision=.*/revision=1/' -e "s/^checksum=.*/checksum=$sum/" "$t"
-            echo "$pkg: $cur -> $v"
-          }
-          av="$(git ls-remote --tags --refs https://gitlab.com/ananicy-cpp/ananicy-cpp | grep -oP 'refs/tags/v\K[0-9.]+' | sort -V | tail -1)"; bump ananicy-cpp "$av"
-          fv="$(git ls-remote --tags --refs https://github.com/Faugus/faugus-launcher | grep -oP 'refs/tags/\K[0-9][0-9.]+' | sort -V | tail -1)"; bump faugus-launcher "$fv"
-
-          # validate the two packages this step manages (symmetry with step 1)
-          for p in ananicy-cpp faugus-launcher; do
-            t="srcpkgs/$p/template"
-            grep -Eq '^version=.+$'            "$t" || { echo "$p: bad version line";  exit 1; }
-            grep -Eq '^checksum=[0-9a-f]{64}$' "$t" || { echo "$p: bad checksum line"; exit 1; }
+          # Validate only the templates that actually changed (shape check).
+          for t in $(git diff --name-only -- srcpkgs | grep '/template$' || true); do
+            grep -Eq '^version=.+$'                 "$t" || { echo "::error::$t bad version";  FAILED+=("validate:$t"); }
+            grep -Eq '^checksum="[0-9a-f]{64}"$'    "$t" || { echo "::error::$t bad checksum"; FAILED+=("validate:$t"); }
           done
 
-      - name: Update MOC official development release
-        shell: bash
-        run: |
-          set -euo pipefail
-          template="srcpkgs/moc/template"
-          tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
-          current="$(sed -n 's/^_upstream_version=//p' "$template")"
-          page="$(curl --retry 4 --retry-all-errors --connect-timeout 30 -fsSL https://moc.daper.net/download)"
-          latest="$(grep -oE 'moc-[0-9]+\.[0-9]+-alpha[0-9]+\.tar\.xz' <<<"$page" | sed -E 's/^moc-//; s/\.tar\.xz$//' | sort -V | tail -n1)"
-          [[ -n "$latest" ]] || { echo "::error::Unable to detect official MOC development release"; exit 1; }
-          echo "Official MOC development release: current=$current latest=$latest"
-          [[ "$latest" != "$current" ]] || { echo "MOC is current."; exit 0; }
-          url="http://ftp.daper.net/pub/soft/moc/unstable/moc-${latest}.tar.xz"
-          curl --retry 4 --retry-all-errors --connect-timeout 30 -fL "$url" -o "$tmp/moc.tar.xz"
-          checksum="$(sha256sum "$tmp/moc.tar.xz" | awk '{print $1}')"
-          [[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid MOC checksum"; exit 1; }
-          xbps_version="${latest/-alpha/alpha}"
-          sed -i -e "s/^version=.*/version=${xbps_version}/" -e 's/^revision=.*/revision=1/' -e "s/^_upstream_version=.*/_upstream_version=${latest}/" -e "s/^checksum=.*/checksum=${checksum}/" "$template"
-          grep -Eq '^version=[0-9]+\.[0-9]+alpha[0-9]+$' "$template"
-          grep -Eq '^_upstream_version=[0-9]+\.[0-9]+-alpha[0-9]+$' "$template"
-          grep -Eq '^checksum=[0-9a-f]{64}$' "$template"
-          git diff -- "$template"
+          echo "----- changes -----"
+          git --no-pager diff --stat -- srcpkgs || true
 
-      - name: Update UniMatrix
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          template="srcpkgs/unimatrix/template"
-          tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
-          api="https://api.github.com/repos/will8211/unimatrix/commits/master"
-          json="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$api")"
-          latest="$(jq -er '.sha' <<<"$json")"
-          commit_date="$(jq -er '.commit.committer.date[0:10] | gsub("-"; "")' <<<"$json")"
-          current="$(sed -n 's/^_commit=//p' "$template")"
-          echo "UniMatrix: current=$current latest=$latest"
-          [[ "$latest" != "$current" ]] || { echo "UniMatrix is current."; exit 0; }
-          url="https://github.com/will8211/unimatrix/archive/${latest}.tar.gz"
-          curl --retry 4 --retry-all-errors --connect-timeout 30 -fL "$url" -o "$tmp/unimatrix.tar.gz"
-          checksum="$(sha256sum "$tmp/unimatrix.tar.gz" | awk '{print $1}')"
-          [[ "$latest" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid UniMatrix commit"; exit 1; }
-          [[ "$commit_date" =~ ^[0-9]{8}$ ]] || { echo "::error::Invalid UniMatrix commit date"; exit 1; }
-          [[ "$checksum" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Invalid UniMatrix checksum"; exit 1; }
-          version="0.1.0+git${commit_date}"
-          sed -i -e "s/^version=.*/version=${version}/" -e 's/^revision=.*/revision=1/' -e "s/^_commit=.*/_commit=${latest}/" -e "s/^checksum=.*/checksum=${checksum}/" "$template"
-          grep -Eq '^version=0\.1\.0\+git[0-9]{8}$' "$template"
-          grep -Eq '^_commit=[0-9a-f]{40}$' "$template"
-          grep -Eq '^checksum=[0-9a-f]{64}$' "$template"
-          git diff -- "$template"
+          # Surface failures to a later step WITHOUT aborting now, so successful
+          # updates still get committed. The job is failed at the end if needed.
+          echo "failed=${FAILED[*]:-}" >> "$GITHUB_OUTPUT"
 
       - name: Commit updates
-        id: commit
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           if git diff --quiet -- srcpkgs; then
-            echo 'changed=false' >> "$GITHUB_OUTPUT"
-            echo 'All templates are current.'
+            echo 'All templates are current — nothing to commit.'
             exit 0
           fi
-          git config user.name 'github-actions[bot]'
+          git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          branch="$(git rev-parse --abbrev-ref HEAD)"   # push to whatever we checked out
           git add srcpkgs
-          git diff --cached --quiet || git commit -m 'Update package templates'
-          git push origin HEAD:main
-          echo 'changed=true' >> "$GITHUB_OUTPUT"
+          git commit -m 'Update package templates'
+          # Rebase-and-push with retries to survive a race with the kernel workflow.
+          for i in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin "$branch" \
+               && git push origin "HEAD:$branch"; then
+              echo "Pushed to $branch."
+              exit 0
+            fi
+            echo "push attempt $i failed; retrying in $((i*3))s..."
+            sleep $((i*3))
+          done
+          echo '::error::push failed after 5 attempts'
+          exit 1
+
+      - name: Report failures
+        if: always()
+        shell: bash
+        run: |
+          failed='${{ steps.update.outputs.failed }}'
+          if [ -z "$failed" ]; then
+            echo 'All apps processed successfully.'
+            exit 0
+          fi
+          echo "::error::One or more apps failed: $failed"
+          exit 1
