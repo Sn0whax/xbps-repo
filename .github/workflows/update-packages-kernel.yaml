@@ -15,7 +15,6 @@ jobs:
         run: |
           set -u
           tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-          changed=0                      # tracks whether anything actually moved
 
           # bump <pkg> <version> [revision]
           #   - version : new upstream version string
@@ -61,7 +60,6 @@ jobs:
               "$t"
 
             echo "$pkg: BUMPED $cur_v-$cur_r -> $v-$rev  (sum $sum)"
-            changed=1
           }
 
           # ---- CachyOS kernel: track full <ver>-<rel> from the SOURCE tags ----
@@ -81,9 +79,17 @@ jobs:
           echo "Latest CachyOS kernel SOURCE tag: $kver-$krel"
 
           # Cross-check against the PACKAGE repo (linux-cachyos PKGBUILD).
-          pkg_pkgver="$(curl -fsSL https://raw.githubusercontent.com/CachyOS/linux-cachyos/master/linux-cachyos/PKGBUILD | sed -n 's/^pkgver=//p' | head -1 || true)"
+          # The PKGBUILD defines pkgver=${_major}.${_minor}, so grabbing the
+          # literal line is useless — we must EVAL the relevant vars to expand it.
+          pkgbuild="$(curl -fsSL https://raw.githubusercontent.com/CachyOS/linux-cachyos/master/linux-cachyos/PKGBUILD || true)"
+          pkg_pkgver="$(
+            eval "$(printf '%s\n' "$pkgbuild" | grep -E '^(_major|_minor|_sublevel|_patch|pkgver)=')" 2>/dev/null
+            printf '%s' "${pkgver:-}"
+          )"
           echo "linux-cachyos PACKAGE pkgver: ${pkg_pkgver:-<unknown>}"
 
+          # Only hold if we SUCCESSFULLY resolved a package version that differs.
+          # If resolution fails (empty), don't block — fall through and bump.
           if [ -n "$pkg_pkgver" ] && [ "$pkg_pkgver" != "$kver" ]; then
             echo "::warning::Source ($kver) is ahead of package ($pkg_pkgver) — holding kernel bump until packaging catches up"
           else
@@ -105,18 +111,21 @@ jobs:
           if [ -n "$nv" ] && curl -fsSL -o "$tmp/nvopen.tgz" \
                "https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${nv}.tar.gz"; then
             nvsum="$(sha256sum "$tmp/nvopen.tgz" | awk '{print $1}')"
-            if python3 .github/scripts/bump_nvopen.py "$nv" "$nvsum" \
-                 srcpkgs/linux-cachyos/template srcpkgs/linux-cachyos-v3/template; then
-              echo "nvidia-open module: synced to $nv"
-              changed=1
-            fi
+            python3 .github/scripts/bump_nvopen.py "$nv" "$nvsum" \
+              srcpkgs/linux-cachyos/template srcpkgs/linux-cachyos-v3/template || true
           fi
 
-          # Expose an honest summary + a flag for downstream steps.
-          if [ "$changed" -eq 1 ]; then
-            echo "RESULT: templates changed — a build should follow"
+          # ---- Honest change detection: git is the ONLY source of truth ----
+          # Never trust exit codes of sub-scripts (bump_nvopen.py exits 0 even
+          # when it skips). A change is real only if a tracked file differs.
+          if git diff --quiet; then
+            changed=0
+            echo "RESULT: nothing changed on disk — no build needed"
           else
-            echo "RESULT: nothing changed — no build needed"
+            changed=1
+            echo "RESULT: templates changed — a build should follow"
+            echo "----- diff summary -----"
+            git --no-pager diff --stat
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
         id: bump
