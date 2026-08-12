@@ -72,7 +72,7 @@ jobs:
           # build ahead of what CachyOS actually validates for base hardware.
           # detect_repo <arch> <repo> : prints released linux-cachyos <ver>-<rel>
           detect_repo() {
-            local arch="$1" repo="$2" db="$tmp/$repo.db"
+            local arch="$1" repo="$2"; local db="$tmp/$repo.db"
             curl -fsSL --max-time 30 "https://cdn77.cachyos.org/repo/$arch/$repo/$repo.db" -o "$db" \
               || { echo "" ; return 0; }
             { tar tf "$db" 2>/dev/null \
