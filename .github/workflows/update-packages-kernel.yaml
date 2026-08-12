@@ -74,10 +74,17 @@ jobs:
           ktag=""
           for r in "x86_64/cachyos" "x86_64_v3/cachyos-v3" "x86_64_v4/cachyos-v4"; do
             arch="${r%%/*}"; repo="${r##*/}"
-            v="$(curl -fsSL --max-time 30 "https://cdn77.cachyos.org/repo/$arch/$repo/$repo.db" \
-                 | tar tf - 2>/dev/null \
-                 | grep -oP '^linux-cachyos-\K[0-9][0-9.]*-[0-9]+(?=/)' \
-                 | sort -Vu | tail -n1)"
+            db="$tmp/$repo.db"
+            # Download to a FILE first (streaming into tar caused curl(23)/SIGPIPE
+            # when tar bailed on the compression). Then let tar auto-detect, with
+            # zstd/gzip fallbacks so any pacman-db compression works.
+            curl -fsSL --max-time 30 "https://cdn77.cachyos.org/repo/$arch/$repo/$repo.db" -o "$db" \
+              || { echo "  $repo: fetch failed — skip"; continue; }
+            v="$( { tar tf "$db" 2>/dev/null \
+                    || zstdcat "$db" 2>/dev/null | tar tf - 2>/dev/null \
+                    || gzip -dc "$db" 2>/dev/null | tar tf - 2>/dev/null; } \
+                  | grep -oP '^linux-cachyos-\K[0-9][0-9.]*-[0-9]+(?=/)' \
+                  | sort -Vu | tail -n1)"
             if [ -n "$v" ]; then
               echo "  $repo: linux-cachyos $v"
               ktag="$(printf '%s\n%s\n' "$ktag" "$v" | sort -Vu | tail -n1)"
