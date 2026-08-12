@@ -64,41 +64,43 @@ jobs:
             echo "$pkg: BUMPED $cur_v-$cur_r -> $v-$rev  (sum $sum)"
           }
 
-          # ---- CachyOS kernel: track the RELEASED package (pacman repo db) ----
-          # The repo db only lists versions CachyOS has actually BUILT + SHIPPED,
-          # so it can never run ahead of reality like the source tags or master
-          # PKGBUILD do (that was the phantom 7.1.8). We query base + v3 + v4 and
-          # take the NEWEST, so a lagging mirror can't pin us to an old version.
-          # The regex anchors a digit right after 'linux-cachyos-' so we ignore
-          # the -headers/-zfs/-nvidia-open/-dbg/-r8125 subpackages.
-          ktag=""
-          for r in "x86_64/cachyos" "x86_64_v3/cachyos-v3" "x86_64_v4/cachyos-v4"; do
-            arch="${r%%/*}"; repo="${r##*/}"
-            db="$tmp/$repo.db"
-            # Download to a FILE first (streaming into tar caused curl(23)/SIGPIPE
-            # when tar bailed on the compression). Then let tar auto-detect, with
-            # zstd/gzip fallbacks so any pacman-db compression works.
+          # ---- CachyOS kernel: FOLLOW what CachyOS ships PER-ARCH ----------
+          # Each template mirrors exactly what CachyOS publishes to ITS repo:
+          #   linux-cachyos    -> base x86_64  repo  (may lag, e.g. 7.1.6-1)
+          #   linux-cachyos-v3 -> x86_64_v3    repo  (leads,   e.g. 7.1.8-1)
+          # Never take "newest across repos" — that would drag the generic
+          # build ahead of what CachyOS actually validates for base hardware.
+          # detect_repo <arch> <repo> : prints released linux-cachyos <ver>-<rel>
+          detect_repo() {
+            local arch="$1" repo="$2" db="$tmp/$repo.db"
             curl -fsSL --max-time 30 "https://cdn77.cachyos.org/repo/$arch/$repo/$repo.db" -o "$db" \
-              || { echo "  $repo: fetch failed — skip"; continue; }
-            v="$( { tar tf "$db" 2>/dev/null \
-                    || zstdcat "$db" 2>/dev/null | tar tf - 2>/dev/null \
-                    || gzip -dc "$db" 2>/dev/null | tar tf - 2>/dev/null; } \
-                  | grep -oP '^linux-cachyos-\K[0-9][0-9.]*-[0-9]+(?=/)' \
-                  | sort -Vu | tail -n1)"
-            if [ -n "$v" ]; then
-              echo "  $repo: linux-cachyos $v"
-              ktag="$(printf '%s\n%s\n' "$ktag" "$v" | sort -Vu | tail -n1)"
-            fi
-          done
-          if [ -z "$ktag" ]; then
-            echo "::error::Could not detect the released CachyOS kernel from any repo db"
+              || { echo "" ; return 0; }
+            { tar tf "$db" 2>/dev/null \
+                || zstdcat "$db" 2>/dev/null | tar tf - 2>/dev/null \
+                || gzip -dc "$db" 2>/dev/null | tar tf - 2>/dev/null; } \
+              | grep -oP '^linux-cachyos-\K[0-9][0-9.]*-[0-9]+(?=/)' \
+              | sort -Vu | tail -n1
+          }
+
+          base_tag="$(detect_repo x86_64    cachyos)"
+          v3_tag="$(detect_repo x86_64_v3 cachyos-v3)"
+          echo "CachyOS base   repo: linux-cachyos ${base_tag:-<none>}"
+          echo "CachyOS v3     repo: linux-cachyos ${v3_tag:-<none>}"
+          if [ -z "$base_tag" ] && [ -z "$v3_tag" ]; then
+            echo "::error::Could not detect any released CachyOS kernel"
             exit 1
           fi
-          kver="${ktag%-*}"; krel="${ktag##*-}"
-          echo "Released CachyOS kernel (newest across repos): $kver-$krel"
 
-          bump linux-cachyos    "$kver" "$krel"
-          bump linux-cachyos-v3 "$kver" "$krel"
+          if [ -n "$base_tag" ]; then
+            bump linux-cachyos    "${base_tag%-*}" "${base_tag##*-}"
+          else
+            echo "linux-cachyos: base repo unreachable — skip"
+          fi
+          if [ -n "$v3_tag" ]; then
+            bump linux-cachyos-v3 "${v3_tag%-*}" "${v3_tag##*-}"
+          else
+            echo "linux-cachyos-v3: v3 repo unreachable — skip"
+          fi
 
           # ---- nlohmann-json ----
           jv="$(git ls-remote --tags --refs https://github.com/nlohmann/json \
