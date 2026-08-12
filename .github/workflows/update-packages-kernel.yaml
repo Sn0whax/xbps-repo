@@ -64,40 +64,34 @@ jobs:
             echo "$pkg: BUMPED $cur_v-$cur_r -> $v-$rev  (sum $sum)"
           }
 
-          # ---- CachyOS kernel: track full <ver>-<rel> from the SOURCE tags ----
-          # NOTE: this watches CachyOS/linux (source tree). It can run AHEAD of
-          # the linux-cachyos PACKAGE repo. The guard below holds until the
-          # package PKGBUILD agrees, so we never bump onto an unpackaged version.
-          ktag="$(
-            git ls-remote --tags --refs https://github.com/CachyOS/linux \
-              | grep -oP 'refs/tags/cachyos-\K[0-9]+(?:\.[0-9]+)+-[0-9]+$' \
-              | sort -Vu | tail -n1
-          )"
+          # ---- CachyOS kernel: track the RELEASED package (pacman repo db) ----
+          # The repo db only lists versions CachyOS has actually BUILT + SHIPPED,
+          # so it can never run ahead of reality like the source tags or master
+          # PKGBUILD do (that was the phantom 7.1.8). We query base + v3 + v4 and
+          # take the NEWEST, so a lagging mirror can't pin us to an old version.
+          # The regex anchors a digit right after 'linux-cachyos-' so we ignore
+          # the -headers/-zfs/-nvidia-open/-dbg/-r8125 subpackages.
+          ktag=""
+          for r in "x86_64/cachyos" "x86_64_v3/cachyos-v3" "x86_64_v4/cachyos-v4"; do
+            arch="${r%%/*}"; repo="${r##*/}"
+            v="$(curl -fsSL --max-time 30 "https://cdn77.cachyos.org/repo/$arch/$repo/$repo.db" \
+                 | tar tf - 2>/dev/null \
+                 | grep -oP '^linux-cachyos-\K[0-9][0-9.]*-[0-9]+(?=/)' \
+                 | sort -Vu | tail -n1)"
+            if [ -n "$v" ]; then
+              echo "  $repo: linux-cachyos $v"
+              ktag="$(printf '%s\n%s\n' "$ktag" "$v" | sort -Vu | tail -n1)"
+            fi
+          done
           if [ -z "$ktag" ]; then
-            echo "::error::Could not detect the latest CachyOS kernel tag"
+            echo "::error::Could not detect the released CachyOS kernel from any repo db"
             exit 1
           fi
           kver="${ktag%-*}"; krel="${ktag##*-}"
-          echo "Latest CachyOS kernel SOURCE tag: $kver-$krel"
+          echo "Released CachyOS kernel (newest across repos): $kver-$krel"
 
-          # Cross-check against the PACKAGE repo (linux-cachyos PKGBUILD).
-          # The PKGBUILD defines pkgver=${_major}.${_minor}, so grabbing the
-          # literal line is useless — we must EVAL the relevant vars to expand it.
-          pkgbuild="$(curl -fsSL https://raw.githubusercontent.com/CachyOS/linux-cachyos/master/linux-cachyos/PKGBUILD || true)"
-          pkg_pkgver="$(
-            eval "$(printf '%s\n' "$pkgbuild" | grep -E '^(_major|_minor|_sublevel|_patch|pkgver)=')" 2>/dev/null
-            printf '%s' "${pkgver:-}"
-          )"
-          echo "linux-cachyos PACKAGE pkgver: ${pkg_pkgver:-<unknown>}"
-
-          # Only hold if we SUCCESSFULLY resolved a package version that differs.
-          # If resolution fails (empty), don't block — fall through and bump.
-          if [ -n "$pkg_pkgver" ] && [ "$pkg_pkgver" != "$kver" ]; then
-            echo "::warning::Source ($kver) is ahead of package ($pkg_pkgver) — holding kernel bump until packaging catches up"
-          else
-            bump linux-cachyos    "$kver" "$krel"
-            bump linux-cachyos-v3 "$kver" "$krel"
-          fi
+          bump linux-cachyos    "$kver" "$krel"
+          bump linux-cachyos-v3 "$kver" "$krel"
 
           # ---- nlohmann-json ----
           jv="$(git ls-remote --tags --refs https://github.com/nlohmann/json \
