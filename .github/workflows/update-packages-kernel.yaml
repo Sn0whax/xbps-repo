@@ -58,7 +58,7 @@ jobs:
             sed -i \
               -e "s/^version=.*/version=$v/" \
               -e "s/^revision=.*/revision=$rev/" \
-              -e "s/^checksum=.*/checksum=\"$sum\"/" \
+              -e "s/^checksum=.*/checksum=\"$sum/" \
               "$t"
 
             echo "$pkg: BUMPED $cur_v-$cur_r -> $v-$rev  (sum $sum)"
