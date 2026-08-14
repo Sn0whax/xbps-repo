@@ -1,6 +1,6 @@
 # Template file for 'discord'
 pkgname=discord
-version=1.0.153
+version=1.0.154
 revision=1
 archs="x86_64"
 depends="alsa-lib dbus-glib gtk+3 libnotify nss libXtst libcxx libatomic
@@ -10,7 +10,7 @@ maintainer="Sn0whax <47508022+Sn0whax@users.noreply.github.com>"
 license="custom:Proprietary"
 homepage="https://discord.com"
 distfiles="https://dl.discordapp.net/apps/linux/${version}/discord-${version}.tar.gz"
-checksum="ff6751840d1319172066bd188190804adc34147c5ed55b1d584223ec4bf42474"
+checksum="062352a0f0245d2f2e57f80b0a81c0c5e4bf3fa38cb04a297d0a08e78d486d9f"
 nopie=yes
 nostrip=yes
 
