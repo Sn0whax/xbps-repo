@@ -1,6 +1,6 @@
 # Template file for 'linux-cachyos'
 pkgname=linux-cachyos-v3
-version=7.2.0
+version=7.2.2
 revision=1
 short_desc="Linux kernel with CachyOS patches (BORE scheduler, LRU_GEN) - x86-64-v3 optimized"
 maintainer="Sn0whax <Sn0whax@noemail.net>"
@@ -9,11 +9,11 @@ homepage="https://github.com/CachyOS/linux-cachyos"
 arch="x86_64"
 _srcname="cachyos-${version}-${revision}"
 # NVIDIA open-gpu kernel module version (built as the nvidia-open subpackage).
-_nvver=595.91.07
+_nvver=595.99.02
 distfiles="https://github.com/CachyOS/linux/archive/refs/tags/${_srcname}.tar.gz
  https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${_nvver}.tar.gz"
-checksum="156c4e577d17b88c6fb0b994cf7a4f041034d6847f17201bc5e88cfeac4e24ef
- 572220bd40b5592f2a6dab13e2137676d5e26cf6db95a9072131545067d35f24"
+checksum="1ad9b504d5313a6a8ee45aea1b77e16f8ddb0d2746d7e9f0c141e0aae549215a
+ b8891cb617683e28ef1e4c3add8dbc30e648b8cd6429a3d521f20dde44633262"
 
 create_wrksrc=yes
 wrksrc="${pkgname}-${version}"
