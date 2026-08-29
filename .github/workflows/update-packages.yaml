@@ -53,8 +53,17 @@ jobs:
           # ---------------------------------------------------------------------
 
           # gh <url> : GitHub API GET with auth + json accept header
-          gh() { curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
-                      -H 'Accept: application/vnd.github+json' "$1"; }
+          gh() {
+            curl -fsSL \
+              --retry 5 \
+              --retry-all-errors \
+              --retry-delay 3 \
+              --connect-timeout 30 \
+              --max-time 120 \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "$1"
+          }
 
           # fetch_sum <url> <outfile> : download then print sha256
           fetch_sum() {
