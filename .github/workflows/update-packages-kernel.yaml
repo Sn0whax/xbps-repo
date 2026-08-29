@@ -58,7 +58,7 @@ jobs:
             sed -i \
               -e "s/^version=.*/version=$v/" \
               -e "s/^revision=.*/revision=$rev/" \
-              -e "s/^checksum=.*/checksum=\"$sum/" \
+              -e "s/^checksum=.*/checksum=$sum/" \
               "$t"
 
             echo "$pkg: BUMPED $cur_v-$cur_r -> $v-$rev  (sum $sum)"
@@ -134,6 +134,33 @@ jobs:
           fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
         id: bump
+
+      - name: Validate changed XBPS templates
+        if: steps.bump.outputs.changed == '1'
+        shell: bash
+        run: |
+          set -uo pipefail
+          failed=0
+
+          while IFS= read -r template; do
+            [ -n "$template" ] || continue
+
+            case "$template" in
+              srcpkgs/*/template)
+                echo "Validating $template"
+
+                if ! bash -n "$template"; then
+                  echo "::error file=$template::Invalid XBPS template syntax"
+                  failed=1
+                fi
+                ;;
+            esac
+          done < <(git diff --name-only --diff-filter=ACMR)
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::Refusing to commit malformed XBPS templates"
+            exit 1
+          fi
 
       - name: Commit updates
         if: steps.bump.outputs.changed == '1'
