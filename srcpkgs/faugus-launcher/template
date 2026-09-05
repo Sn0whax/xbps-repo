@@ -1,6 +1,6 @@
 # Template file for 'faugus-launcher'
 pkgname=faugus-launcher
-version=2.2.1
+version=2.2.2
 revision=1
 archs="x86_64"
 create_wrksrc=yes
@@ -12,7 +12,7 @@ maintainer="Sn0whax <47508022+Sn0whax@users.noreply.github.com>"
 license="MIT"
 homepage="https://github.com/Faugus/faugus-launcher"
 distfiles="https://github.com/Faugus/faugus-launcher/releases/download/${version}/faugus-launcher_${version}-1_all.deb"
-checksum="e5d4645f377e7794c85bfba2257dced0793a84464875364f56ff19c663720607"
+checksum="22c97873763152fa09069ba1c22a63be188985d7736961a97cf4f0b59529b76a"
 
 do_install() {
 	local sitelib
