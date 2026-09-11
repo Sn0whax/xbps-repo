@@ -55,11 +55,26 @@ jobs:
             fi
 
             local sum; sum="$(sha256sum "$tmp/$pkg.src" | awk '{print $1}')"
+                        # version/revision are single, unquoted lines — safe to line-sed.
             sed -i \
               -e "s/^version=.*/version=$v/" \
               -e "s/^revision=.*/revision=$rev/" \
-              -e "s/^checksum=.*/checksum=$sum/" \
               "$t"
+
+            # checksum may be a MULTI-LINE, quoted, dual-distfile block
+            # (kernel + nvidia). Replace ONLY the first sha256 inside the
+            # checksum="..." block — keep the quotes and the nvidia hash.
+            # bump_nvopen.py owns the second (nvidia) checksum.
+            awk -v new="$sum" '
+              !done {
+                if (!inblk && $0 ~ /^checksum="/) inblk=1
+                if (inblk && match($0, /[0-9a-f]{64}/)) {
+                  $0 = substr($0,1,RSTART-1) new substr($0,RSTART+RLENGTH)
+                  done=1
+                }
+              }
+              { print }
+            ' "$t" > "$t.awk" && mv "$t.awk" "$t"
 
             echo "$pkg: BUMPED $cur_v-$cur_r -> $v-$rev  (sum $sum)"
           }
