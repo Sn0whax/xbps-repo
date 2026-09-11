@@ -108,18 +108,21 @@ jobs:
           # source tag can lag the pkgrel (e.g. repo says 7.2.4-3 but the only
           # tag on CachyOS/linux is cachyos-7.2.4-1).
           #
-          # detect_srcrel <version> : probe cachyos-<ver>-<rel> tags high->low,
-          # print the FIRST rel that actually exists (HTTP 200); print nothing
-          # if none exist. Value is DISCOVERED at runtime — never hardcoded.
+          # detect_srcrel <version> : print the HIGHEST source-tag rel that
+          # actually EXISTS on CachyOS/linux for this version, else nothing.
+          # Value is DISCOVERED at runtime — never hardcoded.
+          #
+          # Uses `git ls-remote` (a cheap ref listing) — NOT a tarball download.
+          # The kernel source tarballs are ~200MB; probing them with curl would
+          # time out and falsely report "tag missing", leaving _srcrel empty
+          # (which produced the cachyos-<ver>-.tar.gz 404). ls-remote lists refs
+          # only, so it's fast and reliable. Dots in <version> are escaped so a
+          # tag like 7.2.4 can't accidentally match unrelated refs.
           detect_srcrel() {
-            local ver="$1" rel
-            for rel in 9 8 7 6 5 4 3 2 1; do
-              if curl -fsSL -o /dev/null --max-time 20 \
-                   "https://github.com/CachyOS/linux/archive/refs/tags/cachyos-${ver}-${rel}.tar.gz"; then
-                printf '%s' "$rel"; return 0
-              fi
-            done
-            printf ''
+            local ver="$1"
+            git ls-remote --tags --refs https://github.com/CachyOS/linux 2>/dev/null \
+              | grep -oP "refs/tags/cachyos-${ver//./\\.}-\K[0-9]+" \
+              | sort -n | tail -n1
           }
 
           # bump_kernel <pkg> <repo-tag ver-pkgrel>
