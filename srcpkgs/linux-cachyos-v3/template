@@ -2,6 +2,7 @@
 pkgname=linux-cachyos-v3
 version=7.2.4
 revision=3
+_srcrel=1
 short_desc="Linux kernel with CachyOS patches (BORE scheduler, LRU_GEN) - x86-64-v3 optimized"
 maintainer="Sn0whax <Sn0whax@noemail.net>"
 license="GPL-2.0-only"
