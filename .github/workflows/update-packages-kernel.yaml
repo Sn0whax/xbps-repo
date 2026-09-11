@@ -39,7 +39,10 @@ jobs:
             fi
 
             # Expand the template's distfiles URL against the NEW version so we
-            # fetch the correct tarball to checksum.
+            # fetch the correct tarball to checksum. NOTE: kernel templates also
+            # depend on _srcrel (the CachyOS SOURCE-tag rel), which bump_kernel
+            # has already written before calling us, so ${_srcname} expands to a
+            # tag that actually exists.
             local url u
             url="$(
               eval "$(grep -E '^(version|revision|_[A-Za-z0-9_]+)=' "$t" \
@@ -55,7 +58,8 @@ jobs:
             fi
 
             local sum; sum="$(sha256sum "$tmp/$pkg.src" | awk '{print $1}')"
-                        # version/revision are single, unquoted lines — safe to line-sed.
+
+            # version/revision are single, unquoted lines — safe to line-sed.
             sed -i \
               -e "s/^version=.*/version=$v/" \
               -e "s/^revision=.*/revision=$rev/" \
@@ -97,6 +101,55 @@ jobs:
               | sort -Vu | tail -n1
           }
 
+          # ---- CachyOS SOURCE-tag resolver --------------------------------
+          # The pacman repo rel (pkgrel) is NOT the same as the git SOURCE tag
+          # rel: CachyOS does same-version package rebuilds (-2/-3 NVIDIA/
+          # toolchain rebuilds) that ship NO new kernel source tag. So the
+          # source tag can lag the pkgrel (e.g. repo says 7.2.4-3 but the only
+          # tag on CachyOS/linux is cachyos-7.2.4-1).
+          #
+          # detect_srcrel <version> : probe cachyos-<ver>-<rel> tags high->low,
+          # print the FIRST rel that actually exists (HTTP 200); print nothing
+          # if none exist. Value is DISCOVERED at runtime — never hardcoded.
+          detect_srcrel() {
+            local ver="$1" rel
+            for rel in 9 8 7 6 5 4 3 2 1; do
+              if curl -fsSL -o /dev/null --max-time 20 \
+                   "https://github.com/CachyOS/linux/archive/refs/tags/cachyos-${ver}-${rel}.tar.gz"; then
+                printf '%s' "$rel"; return 0
+              fi
+            done
+            printf ''
+          }
+
+          # bump_kernel <pkg> <repo-tag ver-pkgrel>
+          # Resolves the real SOURCE-tag rel, writes it to _srcrel (upsert: it
+          # inserts the line after revision= if the template doesn't have one
+          # yet, so nothing needs to be seeded by hand), then calls bump() with
+          # the pkgrel as the XBPS revision so same-version rebuilds still fire.
+          bump_kernel() {
+            local pkg="$1" tag="$2" t="srcpkgs/$1/template"
+            [ -n "$tag" ] || { echo "$pkg: repo unreachable — skip"; return 0; }
+            [ -f "$t" ] || { echo "$pkg: template missing ($t) — skip"; return 0; }
+
+            local ver="${tag%-*}" pkgrel="${tag##*-}" srcrel
+            srcrel="$(detect_srcrel "$ver")"
+            if [ -z "$srcrel" ]; then
+              echo "::warning::$pkg: no existing CachyOS source tag for $ver — skip"
+              return 0
+            fi
+
+            # CI AUTHORS _srcrel (upsert). This is the ONLY writer of the value.
+            if grep -q '^_srcrel=' "$t"; then
+              sed -i "s/^_srcrel=.*/_srcrel=$srcrel/" "$t"
+            else
+              sed -i "/^revision=/a _srcrel=$srcrel" "$t"
+            fi
+
+            echo "$pkg: source tag cachyos-$ver-$srcrel  (revision/pkgrel=$pkgrel)"
+            bump "$pkg" "$ver" "$pkgrel"
+          }
+
           base_tag="$(detect_repo x86_64    cachyos)"
           v3_tag="$(detect_repo x86_64_v3 cachyos-v3)"
           echo "CachyOS base   repo: linux-cachyos ${base_tag:-<none>}"
@@ -106,16 +159,8 @@ jobs:
             exit 1
           fi
 
-          if [ -n "$base_tag" ]; then
-            bump linux-cachyos    "${base_tag%-*}" "${base_tag##*-}"
-          else
-            echo "linux-cachyos: base repo unreachable — skip"
-          fi
-          if [ -n "$v3_tag" ]; then
-            bump linux-cachyos-v3 "${v3_tag%-*}" "${v3_tag##*-}"
-          else
-            echo "linux-cachyos-v3: v3 repo unreachable — skip"
-          fi
+          bump_kernel linux-cachyos    "$base_tag"
+          bump_kernel linux-cachyos-v3 "$v3_tag"
 
           # ---- nlohmann-json ----
           jv="$(git ls-remote --tags --refs https://github.com/nlohmann/json \
@@ -164,8 +209,15 @@ jobs:
               srcpkgs/*/template)
                 echo "Validating $template"
 
-                if ! bash -n "$template"; then
-                  echo "::error file=$template::Invalid XBPS template syntax"
+                # Capture bash's actual error so the log points at the line,
+                # not just "Invalid XBPS template syntax".
+                if ! err="$(bash -n "$template" 2>&1)"; then
+                  echo "::error file=$template::$err"
+                  ln="$(sed -n 's/.*: line \([0-9]*\):.*/\1/p' <<<"$err" | head -1)"
+                  if [ -n "$ln" ]; then
+                    echo "----- context around line $ln -----"
+                    awk -v L="$ln" 'NR>=L-6 && NR<=L+2{printf "%5d%s %s\n",NR,(NR==L?">>":"  "),$0}' "$template"
+                  fi
                   failed=1
                 fi
                 ;;
