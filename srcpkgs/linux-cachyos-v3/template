@@ -7,7 +7,7 @@ maintainer="Sn0whax <Sn0whax@noemail.net>"
 license="GPL-2.0-only"
 homepage="https://github.com/CachyOS/linux-cachyos"
 arch="x86_64"
-_srcname="cachyos-${version}-${revision}"
+_srcname="cachyos-${version}-${_srcrel}"
 # NVIDIA open-gpu kernel module version (built as the nvidia-open subpackage).
 _nvver=595.99.02
 distfiles="https://github.com/CachyOS/linux/archive/refs/tags/${_srcname}.tar.gz
