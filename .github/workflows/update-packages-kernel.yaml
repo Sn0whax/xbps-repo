@@ -171,70 +171,9 @@ jobs:
           bump nlohmann-json "$jv"
 
           # ---- NVIDIA production driver ----
-          # NVIDIA occasionally republishes a newly released .run file at the
-          # same versioned URL. A checksum calculated immediately at release may
-          # therefore become invalid several hours later.
-          #
-          # NVIDIA source stabilization gate:
-          #   Run 1: record the detected version and actual downloaded SHA-256.
-          #   Run 2: update the template only if version and SHA-256 are unchanged.
-          #
-          # The state file is tracked by Git. A state-only commit does not trigger
-          # build.yaml because that workflow watches only srcpkgs/**.
-          nv="$(curl -fsSL 'https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500'                 | grep -oP 'Current production branch release: \K[0-9.]+(?= \(x86)' | head -1)"
-
-          nv_template="srcpkgs/nvidia/template"
-          nv_state=".github/state/nvidia-source"
-          nv_current="$(sed -n 's/^version=//p' "$nv_template")"
-
-          if [ -z "$nv" ]; then
-            echo "::warning::NVIDIA production version detection failed — skip"
-          elif [ "$nv" = "$nv_current" ]; then
-            echo "nvidia: up-to-date ($nv_current)"
-          else
-            nv_url="https://us.download.nvidia.com/XFree86/Linux-x86_64/${nv}/NVIDIA-Linux-x86_64-${nv}.run"
-            nv_archive="$tmp/NVIDIA-Linux-x86_64-${nv}.run"
-
-            echo "nvidia: candidate $nv"
-            echo "nvidia: downloading $nv_url"
-
-            if ! curl                  --fail                  --show-error                  --location                  --retry 5                  --retry-all-errors                  --retry-delay 5                  --connect-timeout 30                  --speed-time 60                  --speed-limit 1024                  "$nv_url"                  -o "$nv_archive"; then
-              echo "::warning::nvidia: candidate download failed — skip"
-            else
-              nv_size="$(stat -c %s "$nv_archive")"
-              nv_sum="$(sha256sum "$nv_archive" | awk '{print $1}')"
-              seen_v=""
-              seen_sum=""
-
-              if [ -f "$nv_state" ]; then
-                read -r seen_v seen_sum < "$nv_state" || true
-              fi
-
-              if [ "$nv_size" -lt 100000000 ]; then
-                echo "::warning::nvidia: candidate file is unexpectedly small ($nv_size bytes) — skip"
-              elif ! [[ "$nv_sum" =~ ^[0-9a-f]{64}$ ]]; then
-                echo "::warning::nvidia: invalid SHA-256 result — skip"
-              elif [ "$seen_v" = "$nv" ] && [ "$seen_sum" = "$nv_sum" ]; then
-                echo "nvidia: source stabilized across consecutive runs"
-                echo "nvidia: stable version $nv"
-                echo "nvidia: stable checksum $nv_sum"
-
-                sed -i                   -e "s/^version=.*/version=$nv/"                   -e 's/^revision=.*/revision=1/'                   -e 's|http://us\.download\.nvidia\.com|https://us.download.nvidia.com|g'                   -e "s/^checksum=.*/checksum=$nv_sum/"                   "$nv_template"
-
-                printf '%s %s
-' "$nv" "$nv_sum" > "$nv_state"
-                echo "nvidia: BUMPED $nv_current -> $nv (stable sum $nv_sum)"
-              else
-                mkdir -p "$(dirname "$nv_state")"
-                printf '%s %s
-' "$nv" "$nv_sum" > "$nv_state"
-                echo "nvidia: first observation recorded"
-                echo "nvidia: version $nv"
-                echo "nvidia: checksum $nv_sum"
-                echo "nvidia: deferring template bump until the next scheduled run"
-              fi
-            fi
-          fi
+          nv="$(curl -fsSL 'https://forums.developer.nvidia.com/t/current-graphics-driver-releases/28500' \
+                | grep -oP 'Current production branch release: \K[0-9.]+(?= \(x86)' | head -1)"
+          bump nvidia "$nv"
 
           # keep the open kernel module (kernel subpackage) in lockstep w/ driver
           if [ -n "$nv" ] && curl -fsSL -o "$tmp/nvopen.tgz" \
