@@ -1,7 +1,7 @@
 name: Update Kernel & Heavy Packages
 on:
   schedule:
-    - cron: "23 4 * * *"      # daily 04:23 UTC
+    - cron: "23 2 * * *"      # daily 02:23 UTC
   workflow_dispatch:
 concurrency: { group: update-package-templates, cancel-in-progress: false }
 permissions: { contents: write }
