@@ -3,7 +3,7 @@
 _desc="NVIDIA drivers for linux"
 
 pkgname=nvidia
-version=620.70.06
+version=620.73.04
 revision=1
 maintainer="Andrew Benson <abenson+void@gmail.com>"
 license="custom:NVIDIA Proprietary"

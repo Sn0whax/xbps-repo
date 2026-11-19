@@ -10,11 +10,11 @@ homepage="https://github.com/CachyOS/linux-cachyos"
 arch="x86_64"
 _srcname="cachyos-${version}-${revision}"
 # NVIDIA open-gpu kernel module version (built as the nvidia-open subpackage).
-_nvver=620.70.06
+_nvver=620.73.04
 distfiles="https://github.com/CachyOS/linux/archive/refs/tags/${_srcname}.tar.gz
  https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${_nvver}.tar.gz"
 checksum="7bb4d3a34d5e82393c398b69ac2fe514a47b0637e45584b04e70366033b0586e
- bc9fa156dcdc5e0ed19c3c9ea70cfe2b8c9a0fdc415426af1ba5c3a1f9a7238d"
+ 1397e8eff72bbaff1c2edd7a07fb7454912f2bb5629c2b047add3b7ed43bbac9"
 
 create_wrksrc=yes
 wrksrc="${pkgname}-${version}"
